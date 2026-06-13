@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import type { Notification } from '@/types'
-import { getUnreadCount, getNotifications } from '@/services/notifications'
+import { getUnreadCount, getNotifications, markAsRead } from '@/services/notifications'
 
 interface AppState {
   collapsed: boolean
@@ -17,7 +17,7 @@ interface AppState {
   setCurrentPage: (page: string) => void
   fetchNotifications: () => Promise<void>
   fetchUnreadCount: () => Promise<void>
-  markNotificationRead: (id: string) => void
+  markNotificationRead: (id: string) => Promise<void>
   addNotification: (notification: Notification) => void
   clearNotifications: () => void
   startPolling: () => void
@@ -61,15 +61,20 @@ export const useAppStore = create<AppState>()(
         }
       },
 
-      markNotificationRead: (id) => {
-        const { notifications } = get()
-        const updated = notifications.map((n) =>
-          n.id === id ? { ...n, isRead: true } : n
-        )
-        set({
-          notifications: updated,
-          unreadCount: updated.filter((n) => !n.isRead).length,
-        })
+      markNotificationRead: async (id) => {
+        try {
+          await markAsRead(id)
+          const { notifications } = get()
+          const updated = notifications.map((n) =>
+            n.id === id ? { ...n, isRead: true } : n
+          )
+          set({
+            notifications: updated,
+            unreadCount: updated.filter((n) => !n.isRead).length,
+          })
+        } catch (error) {
+          console.error('Mark notification read error:', error)
+        }
       },
 
       addNotification: (notification) => {

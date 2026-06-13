@@ -102,7 +102,7 @@ const Reports: React.FC = () => {
 
   useEffect(() => {
     fetchData()
-  }, [page, pageSize])
+  }, [page, pageSize, type, dateRange])
 
   const handleSearch = () => {
     setPage(1)
@@ -128,22 +128,33 @@ const Reports: React.FC = () => {
     }
   }
 
-  const handleDownloadExcel = (report: ReportItem) => {
-    if (report.excelUrl) {
-      window.open('http://localhost:3001' + report.excelUrl, '_blank')
+  const handleDownloadExcel = (record: ReportItem) => {
+    if (record.excelUrl) {
+      const a = document.createElement('a')
+      a.href = 'http://localhost:3001' + record.excelUrl
+      a.target = '_blank'
+      a.rel = 'noopener noreferrer'
+      a.download = `${record.name || '月度审计报告'}.xlsx`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
     } else {
-      message.warning('Excel文件暂不可用')
+      message.warning('Excel文件暂不可用，请重新生成报告')
     }
   }
 
-  const handleDownloadPdf = (report: ReportItem) => {
-    if (report.pdfUrl) {
-      window.open('http://localhost:3001' + report.pdfUrl, '_blank')
-    } else if (report.excelUrl) {
-      message.info('PDF暂不可用，已为您打开Excel版本')
-      window.open('http://localhost:3001' + report.excelUrl, '_blank')
+  const handleDownloadPdf = (record: ReportItem) => {
+    if (record.pdfUrl) {
+      const a = document.createElement('a')
+      a.href = 'http://localhost:3001' + record.pdfUrl
+      a.target = '_blank'
+      a.rel = 'noopener noreferrer'
+      a.download = `${record.name || '月度审计报告'}.pdf`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
     } else {
-      message.warning('文件暂不可用')
+      message.warning('PDF文件暂不可用，请重新生成报告')
     }
   }
 

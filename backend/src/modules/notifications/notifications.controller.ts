@@ -65,7 +65,7 @@ export class NotificationsController {
     };
   }
 
-  @Patch(':id/read')
+  @Post(':id/read')
   async markAsRead(
     @Param('id') id: string,
     @GetUser() user: any,

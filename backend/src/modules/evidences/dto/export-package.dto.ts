@@ -4,8 +4,9 @@ export class ExportPackageDto {
   @IsArray()
   evidenceIds: string[];
 
+  @IsOptional()
   @IsString()
-  format: string;
+  format?: string;
 
   @IsOptional()
   @IsString()

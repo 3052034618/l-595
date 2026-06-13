@@ -180,6 +180,60 @@ export class RiskAssessmentService {
     return 'low';
   }
 
+  async getAllHistory(query: { page?: number; pageSize?: number; startDate?: string; endDate?: string; auditObjectId?: string }) {
+    const page = Number(query.page) || 1;
+    const pageSize = Number(query.pageSize) || 10;
+    const skip = (page - 1) * pageSize;
+
+    const where: any = {};
+    if (query.auditObjectId) where.auditObjectId = query.auditObjectId;
+    if (query.startDate) where.assessedAt = { gte: dayjs(query.startDate).toDate() };
+    if (query.endDate) where.assessedAt = { ...where.assessedAt, lte: dayjs(query.endDate).toDate() };
+
+    const [items, total] = await Promise.all([
+      this.prisma.riskAssessment.findMany({
+        where,
+        skip,
+        take: pageSize,
+        include: {
+          auditObject: { select: { id: true, name: true, code: true, contactPerson: true } },
+          assessedByUser: { select: { id: true, name: true } },
+          riskFactors: true,
+        },
+        orderBy: { assessedAt: 'desc' },
+      }),
+      this.prisma.riskAssessment.count({ where }),
+    ]);
+
+    const parsedItems = items.map((item) => {
+      const scores = JSON.parse(item.dimensionScores as string) || {
+        financialRisk: 0,
+        operationalRisk: 0,
+        complianceRisk: 0,
+        strategicRisk: 0,
+        reputationalRisk: 0,
+      };
+      const avgControl = 100 - Math.round(
+        ((scores.financialRisk || 0) + (scores.operationalRisk || 0) + (scores.complianceRisk || 0) + (scores.strategicRisk || 0) + (scores.reputationalRisk || 0)) / 5
+      );
+      return {
+        ...item,
+        dimensionScores: scores,
+        inherentRisk: item.currentScore,
+        controlEffectiveness: Math.max(0, Math.min(100, avgControl)),
+        residualRisk: Math.round(item.currentScore * (1 - avgControl / 100)),
+      };
+    });
+
+    return {
+      items: parsedItems,
+      total,
+      page,
+      pageSize,
+      totalPages: Math.ceil(total / pageSize),
+    };
+  }
+
   async getHistory(auditObjectId: string, query: { page?: number; pageSize?: number; startDate?: string; endDate?: string }) {
     const page = Number(query.page) || 1;
     const pageSize = Number(query.pageSize) || 10;

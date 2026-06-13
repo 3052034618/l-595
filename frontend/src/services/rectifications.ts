@@ -37,7 +37,7 @@ export const addRectificationUpdate = (
 
 export const verifyCompletion = (
   id: string,
-  data: { verified: boolean; comment?: string }
+  data: { passed: boolean; comment?: string }
 ): Promise<ApiResponse<void>> => {
   return post<void>(`/rectifications/${id}/verify`, data)
 }

@@ -52,6 +52,19 @@ export class RiskAssessmentController {
     };
   }
 
+  @Get('history')
+  async getAllHistory(
+    @Query() query: { page?: number; pageSize?: number; startDate?: string; endDate?: string; auditObjectId?: string },
+  ): Promise<ApiResponse> {
+    const data = await this.riskAssessmentService.getAllHistory(query);
+    return {
+      code: 0,
+      message: '查询成功',
+      data,
+      timestamp: Date.now(),
+    };
+  }
+
   @Get('history/:auditObjectId')
   async getHistory(
     @Param('auditObjectId') auditObjectId: string,

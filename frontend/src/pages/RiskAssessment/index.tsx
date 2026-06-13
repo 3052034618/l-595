@@ -1,146 +1,299 @@
-import React from 'react'
-import { Card, Table, Button, Space, Tag, Progress } from 'antd'
-import { PlusOutlined, PlayCircleOutlined } from '@ant-design/icons'
+import React, { useState, useEffect, useCallback } from 'react'
+import { Card, Table, Button, Space, Tag, Progress, Input, Select, DatePicker, Popconfirm, message, Spin } from 'antd'
+import { PlusOutlined, PlayCircleOutlined, SearchOutlined, ReloadOutlined } from '@ant-design/icons'
 import { useAppStore } from '@/store/appStore'
 import { getRiskLevelColor, getRiskLevelText, getStatusColor, getStatusText, formatDate } from '@/utils'
+import { getRiskAssessments, triggerAssessment } from '@/services/riskAssessment'
+import type { TablePaginationConfig } from 'antd/es/table'
+
+const { RangePicker } = DatePicker
+const { Option } = Select
+
+interface AssessmentItem {
+  id: string
+  auditObjectId: string
+  auditObject?: { id: string; name: string; code: string; contactPerson: string }
+  previousScore: number
+  currentScore: number
+  previousLevel: string
+  currentLevel: string
+  dimensionScores?: Record<string, number>
+  riskFactors?: Array<{ id: string; factorCode: string; factorName: string; weight: number; score: number }>
+  assessedAt: string
+  assessedBy?: string
+  assessedByUser?: { id: string; name: string }
+  isManual: boolean
+  inherentRisk: number
+  controlEffectiveness: number
+  residualRisk: number
+  currentLevelDisplay?: string
+  _status?: string
+}
 
 const RiskAssessment: React.FC = () => {
   const { setCurrentPage } = useAppStore()
 
-  React.useEffect(() => {
+  useEffect(() => {
     setCurrentPage('/risk-assessment')
   }, [setCurrentPage])
+
+  const [loading, setLoading] = useState(false)
+  const [triggerLoading, setTriggerLoading] = useState(false)
+  const [data, setData] = useState<AssessmentItem[]>([])
+  const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(10)
+  const [total, setTotal] = useState(0)
+
+  const [keyword, setKeyword] = useState<string>('')
+  const [riskLevel, setRiskLevel] = useState<string | undefined>()
+  const [dateRange, setDateRange] = useState<[string, string] | null>(null)
+
+  const fetchData = useCallback(async () => {
+    setLoading(true)
+    try {
+      const params: Record<string, unknown> = {
+        page,
+        pageSize,
+      }
+      if (dateRange && dateRange[0]) (params as any).startDate = dateRange[0]
+      if (dateRange && dateRange[1]) (params as any).endDate = dateRange[1]
+
+      const res = await getRiskAssessments(undefined, params as any)
+      if (res.code === 0 && res.data) {
+        let items = res.data.items as AssessmentItem[]
+        if (keyword) {
+          const kw = keyword.toLowerCase()
+          items = items.filter((i) =>
+            i.auditObject?.name?.toLowerCase().includes(kw) ||
+            i.auditObject?.code?.toLowerCase().includes(kw)
+          )
+        }
+        if (riskLevel) {
+          items = items.filter((i) => i.currentLevel === riskLevel)
+        }
+        items = items.map((i) => ({
+          ...i,
+          currentLevelDisplay: i.currentLevel,
+          _status: i.isManual ? 'approved' : 'submitted',
+        }))
+        setData(items)
+        setTotal(res.data.total)
+      }
+    } catch (error) {
+      console.error('获取风险评估列表失败:', error)
+    } finally {
+      setLoading(false)
+    }
+  }, [page, pageSize, keyword, riskLevel, dateRange])
+
+  useEffect(() => {
+    fetchData()
+  }, [fetchData])
+
+  const handleSearch = () => {
+    setPage(1)
+    setTimeout(fetchData, 0)
+  }
+
+  const handleReset = () => {
+    setKeyword('')
+    setRiskLevel(undefined)
+    setDateRange(null)
+    setPage(1)
+    setTimeout(fetchData, 0)
+  }
+
+  const handleTrigger = async () => {
+    setTriggerLoading(true)
+    try {
+      const res = await triggerAssessment()
+      if (res.code === 0) {
+        message.success('风险评估触发成功')
+        fetchData()
+      }
+    } catch (error) {
+      console.error('触发评估失败:', error)
+      message.error('触发评估失败')
+    } finally {
+      setTriggerLoading(false)
+    }
+  }
+
+  const handleTableChange = (pagination: TablePaginationConfig) => {
+    if (pagination.current) setPage(pagination.current)
+    if (pagination.pageSize) {
+      setPageSize(pagination.pageSize)
+      setPage(1)
+    }
+  }
 
   const columns = [
     {
       title: '评估期间',
-      dataIndex: 'assessmentPeriod',
-      key: 'assessmentPeriod',
-      width: 120,
+      key: 'period',
+      width: 130,
+      render: (_: unknown, record: AssessmentItem) => {
+        const d = new Date(record.assessedAt)
+        return `${d.getFullYear()}年${d.getMonth() + 1}月`
+      },
     },
     {
       title: '审计对象',
-      dataIndex: 'auditObjectName',
       key: 'auditObjectName',
+      render: (_: unknown, record: AssessmentItem) => record.auditObject?.name || '-',
     },
     {
       title: '固有风险',
       dataIndex: 'inherentRisk',
       key: 'inherentRisk',
-      width: 100,
-      render: (val: number) => (
-        <div className="text-center">
-          <Progress
-            type="circle"
-            percent={val}
-            width={40}
-            strokeColor={val > 70 ? '#f5222d' : val > 40 ? '#faad14' : '#52c41a'}
-          />
-        </div>
-      ),
+      width: 110,
+      render: (val: number) =>
+        val !== undefined && val !== null ? (
+          <div className="text-center">
+            <Progress
+              type="circle"
+              percent={Math.round(val)}
+              width={40}
+              strokeColor={val > 70 ? '#f5222d' : val > 40 ? '#faad14' : '#52c41a'}
+            />
+          </div>
+        ) : (
+          <Spin size="small" />
+        ),
     },
     {
       title: '控制有效性',
       dataIndex: 'controlEffectiveness',
       key: 'controlEffectiveness',
-      width: 100,
-      render: (val: number) => (
-        <div className="text-center">
-          <Progress
-            type="circle"
-            percent={val}
-            width={40}
-            strokeColor={val > 70 ? '#52c41a' : val > 40 ? '#faad14' : '#f5222d'}
-          />
-        </div>
-      ),
+      width: 110,
+      render: (val: number) =>
+        val !== undefined && val !== null ? (
+          <div className="text-center">
+            <Progress
+              type="circle"
+              percent={Math.round(val)}
+              width={40}
+              strokeColor={val > 70 ? '#52c41a' : val > 40 ? '#faad14' : '#f5222d'}
+            />
+          </div>
+        ) : (
+          <Spin size="small" />
+        ),
     },
     {
       title: '剩余风险',
       dataIndex: 'residualRisk',
       key: 'residualRisk',
-      width: 100,
-      render: (val: number) => (
-        <div className="text-center">
-          <Progress
-            type="circle"
-            percent={val}
-            width={40}
-            strokeColor={val > 70 ? '#f5222d' : val > 40 ? '#faad14' : '#52c41a'}
-          />
-        </div>
-      ),
+      width: 110,
+      render: (val: number) =>
+        val !== undefined && val !== null ? (
+          <div className="text-center">
+            <Progress
+              type="circle"
+              percent={Math.round(val)}
+              width={40}
+              strokeColor={val > 70 ? '#f5222d' : val > 40 ? '#faad14' : '#52c41a'}
+            />
+          </div>
+        ) : (
+          <Spin size="small" />
+        ),
     },
     {
       title: '风险等级',
-      dataIndex: 'riskLevel',
+      dataIndex: 'currentLevel',
       key: 'riskLevel',
-      width: 100,
-      render: (level: string) => (
-        <Tag color={getRiskLevelColor(level)}>{getRiskLevelText(level)}</Tag>
+      width: 110,
+      render: (level: string) => <Tag color={getRiskLevelColor(level)}>{getRiskLevelText(level)}</Tag>,
+    },
+    {
+      title: '综合风险分',
+      dataIndex: 'currentScore',
+      key: 'currentScore',
+      width: 110,
+      render: (score: number) => (
+        <span className="font-semibold" style={{ color: score > 70 ? '#f5222d' : score > 40 ? '#fa8c16' : '#389e0d' }}>
+          {Math.round(score * 100) / 100}
+        </span>
       ),
     },
     {
       title: '评估人',
-      dataIndex: 'assessor',
       key: 'assessor',
       width: 100,
+      render: (_: unknown, record: AssessmentItem) => record.assessedByUser?.name || (record.isManual ? '手动触发' : '系统自动'),
     },
     {
       title: '评估日期',
-      dataIndex: 'assessmentDate',
+      dataIndex: 'assessedAt',
       key: 'assessmentDate',
-      width: 120,
+      width: 150,
       render: (date: string) => formatDate(date),
     },
     {
       title: '状态',
-      dataIndex: 'status',
       key: 'status',
       width: 100,
-      render: (status: string) => (
-        <Tag color={getStatusColor(status)}>{getStatusText(status)}</Tag>
-      ),
-    },
-    {
-      title: '操作',
-      key: 'action',
-      width: 180,
-      fixed: 'right' as const,
-      render: (_, record) => (
-        <Space>
-          <Button type="link" size="small">
-            查看
-          </Button>
-          {record.status === 'draft' && (
-            <Button type="link" size="small" icon={<PlayCircleOutlined />}>
-              执行
-            </Button>
-          )}
-          <Button type="link" size="small">
-            编辑
-          </Button>
-        </Space>
+      render: (_: unknown, record: AssessmentItem) => (
+        <Tag color={getStatusColor(record._status || 'approved')}>
+          {getStatusText(record._status || 'approved')}
+        </Tag>
       ),
     },
   ]
 
-  const data = Array.from({ length: 8 }, (_, i) => ({
-    key: i + 1,
-    auditObjectId: `AO${String(i + 1).padStart(4, '0')}`,
-    auditObjectName: ['财务部', 'IT部门', '采购部', '人力资源部', '销售部', '生产部', '研发部', '行政部'][i],
-    assessmentPeriod: `2024年Q${Math.floor(i / 2) + 1}`,
-    inherentRisk: 30 + i * 8,
-    controlEffectiveness: 80 - i * 5,
-    residualRisk: Math.round((30 + i * 8) * (1 - (80 - i * 5) / 100)),
-    riskLevel: ['low', 'low', 'medium', 'medium', 'high', 'high', 'critical', 'critical'][i],
-    assessor: ['审计员A', '审计员B', '审计员C', '审计员A', '审计员B', '审计员C', '审计员A', '审计员B'][i],
-    assessmentDate: `2024-0${Math.floor(i / 2) + 1}-${15 + i}`,
-    status: ['approved', 'approved', 'submitted', 'draft', 'approved', 'submitted', 'rejected', 'draft'][i],
-  }))
-
   return (
     <div className="space-y-4">
+      <Card className="shadow-sm" bordered={false}>
+        <div className="flex flex-wrap gap-4 items-end">
+          <div>
+            <div className="text-sm text-gray-500 mb-1">关键词</div>
+            <Input
+              placeholder="对象名称/编码"
+              prefix={<SearchOutlined />}
+              style={{ width: 180 }}
+              value={keyword}
+              onChange={(e) => setKeyword(e.target.value)}
+              allowClear
+            />
+          </div>
+          <div>
+            <div className="text-sm text-gray-500 mb-1">风险等级</div>
+            <Select
+              placeholder="请选择"
+              style={{ width: 120 }}
+              allowClear
+              value={riskLevel}
+              onChange={(val) => setRiskLevel(val)}
+            >
+              <Option value="low">低</Option>
+              <Option value="medium">中</Option>
+              <Option value="high">高</Option>
+            </Select>
+          </div>
+          <div>
+            <div className="text-sm text-gray-500 mb-1">评估日期</div>
+            <RangePicker
+              onChange={(dates) => {
+                if (dates && dates[0] && dates[1]) {
+                  setDateRange([dates[0].format('YYYY-MM-DD'), dates[1].format('YYYY-MM-DD')])
+                } else {
+                  setDateRange(null)
+                }
+              }}
+            />
+          </div>
+          <Space>
+            <Button type="primary" icon={<SearchOutlined />} onClick={handleSearch}>
+              查询
+            </Button>
+            <Button icon={<ReloadOutlined />} onClick={handleReset}>
+              重置
+            </Button>
+          </Space>
+        </div>
+      </Card>
+
       <Card
         className="shadow-sm"
         bordered={false}
@@ -150,18 +303,33 @@ const RiskAssessment: React.FC = () => {
             <Button type="primary" icon={<PlusOutlined />}>
               新增评估
             </Button>
+            <Button
+              type="primary"
+              danger
+              icon={<PlayCircleOutlined />}
+              onClick={handleTrigger}
+              loading={triggerLoading}
+            >
+              触发全面评估
+            </Button>
           </Space>
         }
       >
         <Table
           columns={columns}
           dataSource={data}
+          rowKey="id"
+          loading={loading}
           pagination={{
+            current: page,
+            pageSize,
+            total,
             showSizeChanger: true,
             showQuickJumper: true,
-            showTotal: (total) => `共 ${total} 条`,
+            showTotal: (t) => `共 ${t} 条`,
           }}
-          scroll={{ x: 1200 }}
+          onChange={handleTableChange}
+          scroll={{ x: 1300 }}
         />
       </Card>
     </div>

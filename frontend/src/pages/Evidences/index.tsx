@@ -115,7 +115,7 @@ const Evidences: React.FC = () => {
 
   useEffect(() => {
     fetchData()
-  }, [page, pageSize])
+  }, [page, pageSize, auditObjectId, auditPlanId, fileType, uploadedBy, dateRange])
 
   const handleSearch = () => {
     setPage(1)
@@ -151,12 +151,25 @@ const Evidences: React.FC = () => {
     }
     try {
       const res = await exportPackage(selectedRowKeys as string[])
-      if (res.code === 0 && res.data?.downloadUrl) {
-        window.open('http://localhost:3001' + res.data.downloadUrl, '_blank')
-        message.success('导出成功')
+      if (res.code === 0 && res.data) {
+        const url = res.data.downloadUrl || res.data.packageUrl
+        if (url) {
+          const fullUrl = 'http://localhost:3001' + url
+          const a = document.createElement('a')
+          a.href = fullUrl
+          a.target = '_blank'
+          a.rel = 'noopener noreferrer'
+          a.download = res.data.packageName || `evidence-package-${Date.now()}.zip`
+          document.body.appendChild(a)
+          a.click()
+          document.body.removeChild(a)
+          const sizeKb = res.data.totalSize ? (res.data.totalSize / 1024).toFixed(2) + ' KB' : ''
+          message.success(`导出成功，共 ${res.data.fileCount || selectedRowKeys.length} 个文件${sizeKb ? `（大小约 ${sizeKb}）` : ''}`)
+        }
       }
     } catch (error) {
       console.error('导出失败:', error)
+      message.error('导出失败')
     }
   }
 

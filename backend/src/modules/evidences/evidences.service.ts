@@ -203,6 +203,7 @@ export class EvidencesService {
         resolve({
           packageUrl,
           packageName,
+          downloadUrl: packageUrl,
           fileCount: evidences.length,
           totalSize: archive.pointer(),
         });

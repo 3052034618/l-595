@@ -75,7 +75,7 @@ const AuditPlans: React.FC = () => {
 
   useEffect(() => {
     fetchData()
-  }, [page, pageSize])
+  }, [page, pageSize, year, status, auditObjectId, keyword])
 
   const handleSearch = () => {
     setPage(1)
@@ -151,9 +151,20 @@ const AuditPlans: React.FC = () => {
     if (!reassignRecord) return
     try {
       const values = await reassignForm.validateFields()
-      const res = await reassignAuditor(reassignRecord.id, values)
+      const leadAuditorId = values.leadAuditorId
+      const teamStr = values.teamMembers || ''
+      const teamArray = teamStr
+        .split(/[,，\s]+/)
+        .map((s: string) => s.trim())
+        .filter(Boolean)
+      const auditorIds = Array.from(new Set([leadAuditorId, ...teamArray]))
+      const res = await reassignAuditor(reassignRecord.id, {
+        leadAuditorId,
+        auditorIds,
+        reason: values.reason || '调整审计资源配置',
+      })
       if (res.code === 0) {
-        message.success('重新分配成功')
+        message.success('重新分配成功，相关人员已收到通知')
         setReassignModalOpen(false)
         setReassignRecord(null)
         reassignForm.resetFields()
@@ -262,7 +273,7 @@ const AuditPlans: React.FC = () => {
               完成
             </Button>
           )}
-          {record.status === 'draft' && (
+          {record.status !== 'completed' && record.status !== 'cancelled' && (
             <Button type="link" size="small" icon={<SwapOutlined />} onClick={() => handleReassign(record)}>
               分配
             </Button>
@@ -413,11 +424,18 @@ const AuditPlans: React.FC = () => {
         cancelText="取消"
       >
         <Form form={reassignForm} layout="vertical">
-          <Form.Item name="leadAuditor" label="主审计师ID" rules={[{ required: true, message: '请输入主审计师ID' }]}>
+          <Form.Item
+            name="leadAuditorId"
+            label="主审计师ID"
+            rules={[{ required: true, message: '请输入主审计师ID' }]}
+          >
             <Input placeholder="请输入主审计师ID" />
           </Form.Item>
           <Form.Item name="teamMembers" label="团队成员ID（逗号分隔）">
-            <Input placeholder="请输入团队成员ID，多个用逗号分隔" />
+            <Input placeholder="请输入团队成员ID，多个用逗号分隔，已包含主审计师" />
+          </Form.Item>
+          <Form.Item name="reason" label="调整原因">
+            <Input.TextArea rows={2} placeholder="请输入调整原因（可选）" />
           </Form.Item>
         </Form>
       </Modal>

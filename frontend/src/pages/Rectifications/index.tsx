@@ -120,7 +120,7 @@ const Rectifications: React.FC = () => {
 
   useEffect(() => {
     fetchData()
-  }, [page, pageSize])
+  }, [page, pageSize, auditObjectId, responsiblePersonId, status, isOverdue, dateRange])
 
   const handleSearch = () => {
     setPage(1)
@@ -206,11 +206,11 @@ const Rectifications: React.FC = () => {
     try {
       const values = await verifyForm.validateFields()
       const res = await verifyCompletion(verifyRecord.id, {
-        verified: verifyType === 'pass',
+        passed: verifyType === 'pass',
         comment: values.comment,
       })
       if (res.code === 0) {
-        message.success(verifyType === 'pass' ? '验证通过' : '已驳回')
+        message.success(verifyType === 'pass' ? '验证通过，整改已完成' : '已驳回，请继续整改')
         setVerifyModalOpen(false)
         setVerifyRecord(null)
         verifyForm.resetFields()
@@ -343,7 +343,7 @@ const Rectifications: React.FC = () => {
               更新进度
             </Button>
           )}
-          {record.status === 'submitted' && (
+          {(record.status === 'completed' || record.status === 'submitted') && (
             <Button
               type="link"
               size="small"
@@ -353,7 +353,7 @@ const Rectifications: React.FC = () => {
               验证通过
             </Button>
           )}
-          {record.status === 'submitted' && (
+          {(record.status === 'completed' || record.status === 'submitted') && (
             <Button
               type="link"
               size="small"

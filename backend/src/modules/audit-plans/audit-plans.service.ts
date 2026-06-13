@@ -119,6 +119,7 @@ export class AuditPlansService {
     year?: number;
     status?: string;
     auditObjectId?: string;
+    keyword?: string;
   }) {
     const page = Number(query.page) || 1;
     const pageSize = Number(query.pageSize) || 10;
@@ -128,6 +129,22 @@ export class AuditPlansService {
     if (query.year) where.year = query.year;
     if (query.status) where.status = query.status;
     if (query.auditObjectId) where.auditObjectId = query.auditObjectId;
+    if (query.keyword) {
+      where.OR = [
+        { name: { contains: query.keyword } },
+        { description: { contains: query.keyword } },
+        {
+          auditObject: {
+            name: { contains: query.keyword },
+          },
+        },
+        {
+          leadAuditor: {
+            name: { contains: query.keyword },
+          },
+        },
+      ];
+    }
 
     const [items, total] = await Promise.all([
       this.prisma.auditPlan.findMany({

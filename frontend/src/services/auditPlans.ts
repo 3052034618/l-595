@@ -38,7 +38,7 @@ export const generatePlan = (data: {
 
 export const reassignAuditor = (
   id: string,
-  data: { leadAuditor: string; teamMembers: string[] }
+  data: { leadAuditorId: string; auditorIds: string[]; reason?: string }
 ): Promise<ApiResponse<void>> => {
   return post<void>(`/audit-plans/${id}/reassign`, data)
 }
