@@ -29,8 +29,8 @@ export class AuditObjectsService {
     industry?: string;
     status?: string;
   }) {
-    const page = query.page || 1;
-    const pageSize = query.pageSize || 10;
+    const page = Number(query.page) || 1;
+    const pageSize = Number(query.pageSize) || 10;
     const skip = (page - 1) * pageSize;
 
     const where: any = {};

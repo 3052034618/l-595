@@ -57,6 +57,10 @@ export const getStatusColor = (status: string): string => {
     closed: '#52c41a',
     reviewing: '#1890ff',
     issued: '#52c41a',
+    pending_confirmation: '#faad14',
+    overdue: '#f5222d',
+    valid: '#52c41a',
+    invalid: '#f5222d',
   }
   return colors[status] || '#8c8c8c'
 }
@@ -80,6 +84,10 @@ export const getStatusText = (status: string): string => {
     closed: '已关闭',
     reviewing: '审核中',
     issued: '已发布',
+    pending_confirmation: '待确认',
+    overdue: '已超期',
+    valid: '已验证',
+    invalid: '已拒绝',
   }
   return texts[status] || '未知'
 }

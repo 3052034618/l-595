@@ -9,6 +9,7 @@ export class ReassignDto {
   @IsArray()
   auditorIds?: string[];
 
+  @IsOptional()
   @IsString()
-  reason: string;
+  reason?: string;
 }

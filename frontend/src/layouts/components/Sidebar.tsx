@@ -11,6 +11,7 @@ import {
   ToolOutlined,
   BarChartOutlined,
   HistoryOutlined,
+  BellOutlined,
 } from '@ant-design/icons'
 import { useAppStore } from '@/store/appStore'
 import type { MenuProps } from 'antd'
@@ -77,6 +78,12 @@ const Sidebar: React.FC = () => {
         icon: <HistoryOutlined />,
         label: '系统日志',
         onClick: () => navigate('/system-logs'),
+      },
+      {
+        key: '/notifications',
+        icon: <BellOutlined />,
+        label: '通知中心',
+        onClick: () => navigate('/notifications'),
       },
     ],
     [navigate]

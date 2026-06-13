@@ -55,11 +55,9 @@ export const rejectEvidence = (id: string, reason: string): Promise<ApiResponse<
 }
 
 export const exportPackage = (
-  findingId: string,
-  format: 'zip' | 'pdf'
+  evidenceIds: string[]
 ): Promise<ApiResponse<{ downloadUrl: string }>> => {
   return post<{ downloadUrl: string }>('/evidences/export-package', {
-    findingId,
-    format,
+    evidenceIds,
   })
 }

@@ -29,9 +29,10 @@ export const deleteReport = (id: string): Promise<ApiResponse<void>> => {
 }
 
 export const generateReport = (data: {
-  auditPlanId: string
-  title: string
-  type: string
+  type: 'monthly' | 'quarterly' | 'annual' | 'custom'
+  startDate?: string
+  endDate?: string
+  autoExport: true
 }): Promise<ApiResponse<Report>> => {
   return post<Report>('/reports/generate', data)
 }
@@ -50,4 +51,12 @@ export const issueReport = (id: string): Promise<ApiResponse<void>> => {
 
 export const downloadReport = (id: string): Promise<ApiResponse<{ downloadUrl: string }>> => {
   return get<{ downloadUrl: string }>(`/reports/${id}/download`)
+}
+
+export const getDashboardStats = (): Promise<ApiResponse<any>> => {
+  return get<any>('/reports/dashboard-stats')
+}
+
+export const downloadFile = (fileUrl: string): void => {
+  window.open('http://localhost:3001' + fileUrl)
 }

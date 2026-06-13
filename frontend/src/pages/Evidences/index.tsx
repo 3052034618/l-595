@@ -1,52 +1,225 @@
-import React from 'react'
-import { Card, Table, Button, Space, Tag, Upload } from 'antd'
-import { PlusOutlined, UploadOutlined, DownloadOutlined, EyeOutlined } from '@ant-design/icons'
+import React, { useState, useEffect } from 'react'
+import { Card, Table, Button, Space, Tag, Upload, Input, Select, DatePicker, Popconfirm, message, Modal } from 'antd'
+import { PlusOutlined, UploadOutlined, DownloadOutlined, EyeOutlined, DeleteOutlined, SearchOutlined, ReloadOutlined, ExportOutlined } from '@ant-design/icons'
 import { useAppStore } from '@/store/appStore'
 import { getStatusColor, getStatusText, formatFileSize, formatDateTime } from '@/utils'
+import { getEvidences, uploadEvidence, exportPackage, deleteEvidence } from '@/services/evidences'
+import type { TablePaginationConfig } from 'antd/es/table'
 import type { UploadProps } from 'antd'
+
+const { RangePicker } = DatePicker
+const { Option } = Select
+
+interface EvidenceItem {
+  id: string
+  fileName: string
+  originalName: string
+  fileSize: number
+  fileType: string
+  filePath: string
+  fileUrl: string
+  auditObjectId?: string
+  auditPlanId?: string
+  description?: string
+  tags?: string[]
+  uploadedBy?: string
+  validationStatus: string
+  validationMessage?: string
+  uploadedAt: string
+  auditObject?: { id: string; name: string }
+  auditPlan?: { id: string; name: string }
+  uploadedByUser?: { id: string; name: string }
+}
+
+const getEvidenceType = (mimeType: string): string => {
+  if (mimeType.includes('pdf') || mimeType.includes('word') || mimeType.includes('document')) return 'document'
+  if (mimeType.includes('image')) return 'screenshot'
+  if (mimeType.includes('excel') || mimeType.includes('spreadsheet') || mimeType.includes('sheet')) return 'spreadsheet'
+  if (mimeType.includes('email')) return 'email'
+  if (mimeType.includes('audio') || mimeType.includes('video')) return 'interview'
+  return 'other'
+}
+
+const getEvidenceTypeName = (type: string): string => {
+  const typeMap: Record<string, string> = {
+    document: '文档',
+    spreadsheet: '表格',
+    email: '邮件',
+    screenshot: '截图',
+    interview: '访谈',
+    other: '其他',
+  }
+  return typeMap[type] || '其他'
+}
+
+const mapValidationStatus = (status: string): string => {
+  if (status === 'valid') return 'verified'
+  if (status === 'invalid') return 'rejected'
+  return 'pending'
+}
 
 const Evidences: React.FC = () => {
   const { setCurrentPage } = useAppStore()
 
-  React.useEffect(() => {
+  useEffect(() => {
     setCurrentPage('/evidences')
   }, [setCurrentPage])
 
-  const uploadProps: UploadProps = {
-    action: '/api/evidences/upload',
-    headers: {
-      Authorization: `Bearer ${localStorage.getItem('audit_platform_token')}`,
+  const [loading, setLoading] = useState(false)
+  const [data, setData] = useState<EvidenceItem[]>([])
+  const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(10)
+  const [total, setTotal] = useState(0)
+
+  const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([])
+  const [auditObjectId, setAuditObjectId] = useState<string | undefined>()
+  const [auditPlanId, setAuditPlanId] = useState<string | undefined>()
+  const [fileType, setFileType] = useState<string | undefined>()
+  const [uploadedBy, setUploadedBy] = useState<string | undefined>()
+  const [dateRange, setDateRange] = useState<[string, string] | null>(null)
+
+  const [uploadModalOpen, setUploadModalOpen] = useState(false)
+  const [uploadFormData, setUploadFormData] = useState({
+    auditObjectId: '',
+    auditPlanId: '',
+    description: '',
+  })
+  const [uploadFileList, setUploadFileList] = useState<File[]>([])
+  const [uploading, setUploading] = useState(false)
+
+  const fetchData = async () => {
+    setLoading(true)
+    try {
+      const params: Record<string, unknown> = {
+        page,
+        pageSize,
+      }
+      if (auditObjectId) params.auditObjectId = auditObjectId
+      if (auditPlanId) params.auditPlanId = auditPlanId
+      if (fileType) params.fileType = fileType
+      if (uploadedBy) params.uploadedBy = uploadedBy
+      if (dateRange && dateRange[0]) params.startDate = dateRange[0]
+      if (dateRange && dateRange[1]) params.endDate = dateRange[1]
+
+      const res = await getEvidences(params)
+      if (res.code === 0 && res.data) {
+        setData(res.data.items as unknown as EvidenceItem[])
+        setTotal(res.data.total)
+      }
+    } catch (error) {
+      console.error('获取证据列表失败:', error)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    fetchData()
+  }, [page, pageSize])
+
+  const handleSearch = () => {
+    setPage(1)
+    setTimeout(fetchData, 0)
+  }
+
+  const handleReset = () => {
+    setAuditObjectId(undefined)
+    setAuditPlanId(undefined)
+    setFileType(undefined)
+    setUploadedBy(undefined)
+    setDateRange(null)
+    setPage(1)
+    setTimeout(fetchData, 0)
+  }
+
+  const handleDelete = async (id: string) => {
+    try {
+      const res = await deleteEvidence(id)
+      if (res.code === 0) {
+        message.success('删除成功')
+        fetchData()
+      }
+    } catch (error) {
+      console.error('删除失败:', error)
+    }
+  }
+
+  const handleExport = async () => {
+    if (selectedRowKeys.length === 0) {
+      message.warning('请先选择要导出的证据')
+      return
+    }
+    try {
+      const res = await exportPackage(selectedRowKeys as string[])
+      if (res.code === 0 && res.data?.downloadUrl) {
+        window.open('http://localhost:3001' + res.data.downloadUrl, '_blank')
+        message.success('导出成功')
+      }
+    } catch (error) {
+      console.error('导出失败:', error)
+    }
+  }
+
+  const handleUpload = async () => {
+    if (uploadFileList.length === 0) {
+      message.warning('请先选择文件')
+      return
+    }
+    setUploading(true)
+    try {
+      for (const file of uploadFileList) {
+        await uploadEvidence(file, uploadFormData)
+      }
+      message.success('上传成功')
+      setUploadModalOpen(false)
+      setUploadFileList([])
+      setUploadFormData({ auditObjectId: '', auditPlanId: '', description: '' })
+      fetchData()
+    } catch (error) {
+      console.error('上传失败:', error)
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  const handleTableChange = (pagination: TablePaginationConfig) => {
+    if (pagination.current) setPage(pagination.current)
+    if (pagination.pageSize) {
+      setPageSize(pagination.pageSize)
+      setPage(1)
+    }
+  }
+
+  const customUploadProps: UploadProps = {
+    multiple: true,
+    beforeUpload: (file) => {
+      setUploadFileList((prev) => [...prev, file])
+      return false
     },
+    onRemove: (file) => {
+      setUploadFileList((prev) => prev.filter((f) => f.name !== file.name))
+    },
+    fileList: uploadFileList.map((f) => ({ uid: f.name, name: f.name, size: f.size })),
   }
 
   const columns = [
     {
       title: '标题',
-      dataIndex: 'title',
       key: 'title',
+      render: (_: unknown, record: EvidenceItem) => record.originalName,
     },
     {
       title: '类型',
-      dataIndex: 'type',
       key: 'type',
       width: 100,
-      render: (type: string) => {
-        const typeMap: Record<string, string> = {
-          document: '文档',
-          spreadsheet: '表格',
-          email: '邮件',
-          screenshot: '截图',
-          interview: '访谈',
-          other: '其他',
-        }
-        return typeMap[type] || type
-      },
+      render: (_: unknown, record: EvidenceItem) => getEvidenceTypeName(getEvidenceType(record.fileType)),
     },
     {
       title: '文件类型',
       dataIndex: 'fileType',
       key: 'fileType',
-      width: 100,
+      width: 140,
+      ellipsis: true,
     },
     {
       title: '文件大小',
@@ -57,15 +230,15 @@ const Evidences: React.FC = () => {
     },
     {
       title: '关联审计计划',
-      dataIndex: 'auditPlanName',
-      key: 'auditPlanName',
+      key: 'auditPlan',
       width: 180,
+      render: (_: unknown, record: EvidenceItem) => record.auditPlan?.name || '-',
     },
     {
       title: '上传人',
-      dataIndex: 'uploadedBy',
       key: 'uploadedBy',
       width: 100,
+      render: (_: unknown, record: EvidenceItem) => record.uploadedByUser?.name || '-',
     },
     {
       title: '上传时间',
@@ -76,73 +249,142 @@ const Evidences: React.FC = () => {
     },
     {
       title: '状态',
-      dataIndex: 'status',
       key: 'status',
       width: 100,
-      render: (status: string) => (
-        <Tag color={getStatusColor(status)}>{getStatusText(status)}</Tag>
-      ),
+      render: (_: unknown, record: EvidenceItem) => {
+        const displayStatus = mapValidationStatus(record.validationStatus)
+        return (
+          <Tag color={getStatusColor(displayStatus)}>{getStatusText(displayStatus)}</Tag>
+        )
+      },
     },
     {
       title: '操作',
       key: 'action',
-      width: 180,
+      width: 220,
       fixed: 'right' as const,
-      render: (_, record) => (
+      render: (_: unknown, record: EvidenceItem) => (
         <Space>
-          <Button type="link" size="small" icon={<EyeOutlined />}>
+          <Button
+            type="link"
+            size="small"
+            icon={<EyeOutlined />}
+            onClick={() => window.open('http://localhost:3001' + record.fileUrl, '_blank')}
+          >
             预览
           </Button>
-          <Button type="link" size="small" icon={<DownloadOutlined />}>
+          <Button
+            type="link"
+            size="small"
+            icon={<DownloadOutlined />}
+            onClick={() => window.open('http://localhost:3001' + record.fileUrl, '_blank')}
+          >
             下载
           </Button>
-          {record.status === 'pending' && (
-            <Button type="link" size="small" danger>
+          <Popconfirm
+            title="确定删除该证据？"
+            onConfirm={() => handleDelete(record.id)}
+            okText="确定"
+            cancelText="取消"
+          >
+            <Button type="link" size="small" danger icon={<DeleteOutlined />}>
               删除
             </Button>
-          )}
+          </Popconfirm>
         </Space>
       ),
     },
   ]
 
-  const data = Array.from({ length: 10 }, (_, i) => ({
-    key: i + 1,
-    title: [
-      '财务报表2024Q1.xlsx',
-      '系统权限清单.pdf',
-      '采购合同扫描件.pdf',
-      '员工手册.docx',
-      '销售合同模板.docx',
-      '生产成本核算表.xlsx',
-      '项目进度报告.pptx',
-      '费用报销制度.pdf',
-      '合同管理制度.docx',
-      '内部控制矩阵.xlsx',
-    ][i],
-    type: ['spreadsheet', 'document', 'document', 'document', 'document', 'spreadsheet', 'other', 'document', 'document', 'spreadsheet'][i],
-    fileType: ['XLSX', 'PDF', 'PDF', 'DOCX', 'DOCX', 'XLSX', 'PPTX', 'PDF', 'DOCX', 'XLSX'][i],
-    fileSize: [1024000, 2048000, 512000, 256000, 768000, 1536000, 3072000, 128000, 384000, 2048000][i],
-    auditPlanId: `AP${String(i + 1).padStart(4, '0')}`,
-    auditPlanName: ['2024年度财务审计', '信息系统安全审计', '采购流程合规审计', '人力资源管理审计', '销售合同专项审计', '生产成本核算审计', '研发项目管理审计', '行政管理费用审计', '合同管理制度审计', '内部控制评价审计'][i],
-    uploadedBy: ['审计员A', '审计员B', '审计员C', '审计员A', '审计员B', '审计员C', '审计员A', '审计员B', '审计员C', '审计员A'][i],
-    uploadedAt: `2024-0${Math.floor(i / 3) + 1}-${10 + i} 14:${30 + i}:00`,
-    hash: `SHA256:${Math.random().toString(36).substring(2, 10)}...`,
-    status: ['verified', 'verified', 'pending', 'verified', 'rejected', 'verified', 'pending', 'verified', 'verified', 'pending'][i],
-  }))
-
   return (
     <div className="space-y-4">
+      <Card className="shadow-sm" bordered={false}>
+        <div className="flex flex-wrap gap-4 items-end">
+          <div>
+            <div className="text-sm text-gray-500 mb-1">审计对象ID</div>
+            <Input
+              placeholder="请输入审计对象ID"
+              style={{ width: 180 }}
+              value={auditObjectId}
+              onChange={(e) => setAuditObjectId(e.target.value)}
+              allowClear
+            />
+          </div>
+          <div>
+            <div className="text-sm text-gray-500 mb-1">审计计划ID</div>
+            <Input
+              placeholder="请输入审计计划ID"
+              style={{ width: 180 }}
+              value={auditPlanId}
+              onChange={(e) => setAuditPlanId(e.target.value)}
+              allowClear
+            />
+          </div>
+          <div>
+            <div className="text-sm text-gray-500 mb-1">文件类型</div>
+            <Select
+              placeholder="请选择"
+              style={{ width: 150 }}
+              allowClear
+              value={fileType}
+              onChange={(val) => setFileType(val)}
+            >
+              <Option value="document">文档</Option>
+              <Option value="spreadsheet">表格</Option>
+              <Option value="screenshot">截图</Option>
+              <Option value="other">其他</Option>
+            </Select>
+          </div>
+          <div>
+            <div className="text-sm text-gray-500 mb-1">上传人ID</div>
+            <Input
+              placeholder="请输入上传人ID"
+              style={{ width: 150 }}
+              value={uploadedBy}
+              onChange={(e) => setUploadedBy(e.target.value)}
+              allowClear
+            />
+          </div>
+          <div>
+            <div className="text-sm text-gray-500 mb-1">上传时间</div>
+            <RangePicker
+              onChange={(dates) => {
+                if (dates && dates[0] && dates[1]) {
+                  setDateRange([dates[0].format('YYYY-MM-DD'), dates[1].format('YYYY-MM-DD')])
+                } else {
+                  setDateRange(null)
+                }
+              }}
+            />
+          </div>
+          <Space>
+            <Button type="primary" icon={<SearchOutlined />} onClick={handleSearch}>
+              查询
+            </Button>
+            <Button icon={<ReloadOutlined />} onClick={handleReset}>
+              重置
+            </Button>
+          </Space>
+        </div>
+      </Card>
+
       <Card
         className="shadow-sm"
         bordered={false}
         title="证据管理列表"
         extra={
           <Space>
-            <Upload {...uploadProps}>
+            <Button
+              icon={<ExportOutlined />}
+              onClick={handleExport}
+              disabled={selectedRowKeys.length === 0}
+            >
+              导出选中({selectedRowKeys.length})
+            </Button>
+            <Upload {...customUploadProps}>
               <Button icon={<UploadOutlined />}>批量上传</Button>
             </Upload>
-            <Button type="primary" icon={<PlusOutlined />}>
+            <Button type="primary" icon={<PlusOutlined />} onClick={() => setUploadModalOpen(true)}>
               上传证据
             </Button>
           </Space>
@@ -151,14 +393,69 @@ const Evidences: React.FC = () => {
         <Table
           columns={columns}
           dataSource={data}
+          rowKey="id"
+          loading={loading}
+          rowSelection={{
+            selectedRowKeys,
+            onChange: setSelectedRowKeys,
+          }}
           pagination={{
+            current: page,
+            pageSize,
+            total,
             showSizeChanger: true,
             showQuickJumper: true,
-            showTotal: (total) => `共 ${total} 条`,
+            showTotal: (t) => `共 ${t} 条`,
           }}
-          scroll={{ x: 1400 }}
+          onChange={handleTableChange}
+          scroll={{ x: 1600 }}
         />
       </Card>
+
+      <Modal
+        title="上传证据"
+        open={uploadModalOpen}
+        onOk={handleUpload}
+        onCancel={() => {
+          setUploadModalOpen(false)
+          setUploadFileList([])
+          setUploadFormData({ auditObjectId: '', auditPlanId: '', description: '' })
+        }}
+        confirmLoading={uploading}
+        okText="上传"
+        cancelText="取消"
+      >
+        <div className="space-y-4">
+          <Upload {...customUploadProps}>
+            <Button icon={<UploadOutlined />}>选择文件</Button>
+          </Upload>
+          <div>
+            <div className="text-sm text-gray-500 mb-1">审计对象ID</div>
+            <Input
+              placeholder="请输入审计对象ID"
+              value={uploadFormData.auditObjectId}
+              onChange={(e) => setUploadFormData({ ...uploadFormData, auditObjectId: e.target.value })}
+            />
+          </div>
+          <div>
+            <div className="text-sm text-gray-500 mb-1">审计计划ID</div>
+            <Input
+              placeholder="请输入审计计划ID"
+              value={uploadFormData.auditPlanId}
+              onChange={(e) => setUploadFormData({ ...uploadFormData, auditPlanId: e.target.value })}
+            />
+          </div>
+          <div>
+            <div className="text-sm text-gray-500 mb-1">描述</div>
+            <Input.TextArea
+              placeholder="请输入描述"
+              rows={3}
+              value={uploadFormData.description}
+              onChange={(e) => setUploadFormData({ ...uploadFormData, description: e.target.value })}
+            />
+          </div>
+        </div>
+      </Modal>
     </div>
   )
 }

@@ -191,15 +191,26 @@ export interface Report {
 
 export interface Notification {
   id: string
-  userId: string
+  recipientId: string
+  userId?: string
   title: string
   content: string
-  type: 'system' | 'task' | 'finding' | 'rectification' | 'report'
+  type: 'system' | 'alert' | 'message' | 'task' | 'audit_change'
+  priority: 'low' | 'medium' | 'high' | 'urgent'
   relatedId?: string
   relatedType?: string
   isRead: boolean
   createdAt: string
   readAt?: string
+}
+
+export interface NotificationPageResult<T> {
+  items: T[]
+  total: number
+  unreadCount: number
+  page: number
+  pageSize: number
+  totalPages: number
 }
 
 export interface SystemLog {

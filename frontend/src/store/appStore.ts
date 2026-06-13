@@ -10,6 +10,7 @@ interface AppState {
   notifications: Notification[]
   unreadCount: number
   currentPage: string
+  pollingInterval: NodeJS.Timeout | null
   setCollapsed: (collapsed: boolean) => void
   setTheme: (theme: 'light' | 'dark') => void
   setLoading: (loading: boolean) => void
@@ -19,6 +20,8 @@ interface AppState {
   markNotificationRead: (id: string) => void
   addNotification: (notification: Notification) => void
   clearNotifications: () => void
+  startPolling: () => void
+  stopPolling: () => void
 }
 
 export const useAppStore = create<AppState>()(
@@ -30,6 +33,7 @@ export const useAppStore = create<AppState>()(
       notifications: [],
       unreadCount: 0,
       currentPage: '/',
+      pollingInterval: null,
 
       setCollapsed: (collapsed) => set({ collapsed }),
       setTheme: (theme) => set({ theme }),
@@ -39,7 +43,10 @@ export const useAppStore = create<AppState>()(
       fetchNotifications: async () => {
         try {
           const response = await getNotifications({ pageSize: 10 })
-          set({ notifications: response.data.items })
+          set({
+            notifications: response.data.items,
+            unreadCount: response.data.unreadCount,
+          })
         } catch (error) {
           console.error('Fetch notifications error:', error)
         }
@@ -75,6 +82,25 @@ export const useAppStore = create<AppState>()(
 
       clearNotifications: () => {
         set({ notifications: [], unreadCount: 0 })
+      },
+
+      startPolling: () => {
+        const { pollingInterval, fetchUnreadCount } = get()
+        if (pollingInterval) {
+          clearInterval(pollingInterval)
+        }
+        const interval = setInterval(() => {
+          fetchUnreadCount()
+        }, 30000)
+        set({ pollingInterval: interval })
+      },
+
+      stopPolling: () => {
+        const { pollingInterval } = get()
+        if (pollingInterval) {
+          clearInterval(pollingInterval)
+          set({ pollingInterval: null })
+        }
       },
     }),
     {

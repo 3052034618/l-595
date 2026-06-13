@@ -1,22 +1,186 @@
-import React from 'react'
-import { Card, Table, Button, Space, Tag, Progress } from 'antd'
-import { PlusOutlined, PlayCircleOutlined, CheckCircleOutlined } from '@ant-design/icons'
+import React, { useState, useEffect } from 'react'
+import { Card, Table, Button, Space, Tag, Progress, Input, Select, Popconfirm, message, Modal, Form } from 'antd'
+import { PlusOutlined, PlayCircleOutlined, CheckCircleOutlined, DeleteOutlined, SearchOutlined, ReloadOutlined, SwapOutlined } from '@ant-design/icons'
 import { useAppStore } from '@/store/appStore'
 import { getStatusColor, getStatusText, formatDate } from '@/utils'
+import { getAuditPlans, generatePlan, reassignAuditor, deleteAuditPlan, startAudit, completeAudit } from '@/services/auditPlans'
+import type { TablePaginationConfig } from 'antd/es/table'
+
+const { Option } = Select
+
+interface AuditPlanItem {
+  id: string
+  year: number
+  name: string
+  description?: string
+  status: string
+  startDate: string
+  endDate: string
+  auditObjectId?: string
+  leadAuditorId?: string
+  progress: number
+  auditObject?: { id: string; name: string }
+  leadAuditor?: { id: string; name: string }
+  planAuditors: Array<{ auditor: { id: string; name: string } }>
+  createdAt: string
+}
 
 const AuditPlans: React.FC = () => {
   const { setCurrentPage } = useAppStore()
 
-  React.useEffect(() => {
+  useEffect(() => {
     setCurrentPage('/audit-plans')
   }, [setCurrentPage])
+
+  const [loading, setLoading] = useState(false)
+  const [data, setData] = useState<AuditPlanItem[]>([])
+  const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(10)
+  const [total, setTotal] = useState(0)
+
+  const [year, setYear] = useState<number | undefined>()
+  const [status, setStatus] = useState<string | undefined>()
+  const [auditObjectId, setAuditObjectId] = useState<string | undefined>()
+  const [keyword, setKeyword] = useState('')
+
+  const [generateModalOpen, setGenerateModalOpen] = useState(false)
+  const [reassignModalOpen, setReassignModalOpen] = useState(false)
+  const [reassignRecord, setReassignRecord] = useState<AuditPlanItem | null>(null)
+  const [form] = Form.useForm()
+  const [reassignForm] = Form.useForm()
+
+  const fetchData = async () => {
+    setLoading(true)
+    try {
+      const params: Record<string, unknown> = {
+        page,
+        pageSize,
+      }
+      if (year) params.year = year
+      if (status) params.status = status
+      if (auditObjectId) params.auditObjectId = auditObjectId
+      if (keyword) params.keyword = keyword
+
+      const res = await getAuditPlans(params)
+      if (res.code === 0 && res.data) {
+        setData(res.data.items as unknown as AuditPlanItem[])
+        setTotal(res.data.total)
+      }
+    } catch (error) {
+      console.error('获取审计计划列表失败:', error)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    fetchData()
+  }, [page, pageSize])
+
+  const handleSearch = () => {
+    setPage(1)
+    setTimeout(fetchData, 0)
+  }
+
+  const handleReset = () => {
+    setYear(undefined)
+    setStatus(undefined)
+    setAuditObjectId(undefined)
+    setKeyword('')
+    setPage(1)
+    setTimeout(fetchData, 0)
+  }
+
+  const handleDelete = async (id: string) => {
+    try {
+      const res = await deleteAuditPlan(id)
+      if (res.code === 0) {
+        message.success('删除成功')
+        fetchData()
+      }
+    } catch (error) {
+      console.error('删除失败:', error)
+    }
+  }
+
+  const handleStart = async (id: string) => {
+    try {
+      const res = await startAudit(id)
+      if (res.code === 0) {
+        message.success('已启动审计')
+        fetchData()
+      }
+    } catch (error) {
+      console.error('启动失败:', error)
+    }
+  }
+
+  const handleComplete = async (id: string) => {
+    try {
+      const res = await completeAudit(id)
+      if (res.code === 0) {
+        message.success('已完成审计')
+        fetchData()
+      }
+    } catch (error) {
+      console.error('完成失败:', error)
+    }
+  }
+
+  const handleGenerate = async () => {
+    try {
+      const values = await form.validateFields()
+      const res = await generatePlan(values)
+      if (res.code === 0) {
+        message.success('计划生成成功')
+        setGenerateModalOpen(false)
+        form.resetFields()
+        fetchData()
+      }
+    } catch (error) {
+      console.error('生成计划失败:', error)
+    }
+  }
+
+  const handleReassign = (record: AuditPlanItem) => {
+    setReassignRecord(record)
+    setReassignModalOpen(true)
+  }
+
+  const handleReassignSubmit = async () => {
+    if (!reassignRecord) return
+    try {
+      const values = await reassignForm.validateFields()
+      const res = await reassignAuditor(reassignRecord.id, values)
+      if (res.code === 0) {
+        message.success('重新分配成功')
+        setReassignModalOpen(false)
+        setReassignRecord(null)
+        reassignForm.resetFields()
+        fetchData()
+      }
+    } catch (error) {
+      console.error('重新分配失败:', error)
+    }
+  }
+
+  const handleTableChange = (pagination: TablePaginationConfig) => {
+    if (pagination.current) setPage(pagination.current)
+    if (pagination.pageSize) {
+      setPageSize(pagination.pageSize)
+      setPage(1)
+    }
+  }
+
+  const currentYear = new Date().getFullYear()
+  const yearOptions = Array.from({ length: 5 }, (_, i) => currentYear - 2 + i)
 
   const columns = [
     {
       title: '计划编码',
-      dataIndex: 'code',
       key: 'code',
       width: 120,
+      render: (_: unknown, record: AuditPlanItem) => record.id.substring(0, 8).toUpperCase(),
     },
     {
       title: '计划名称',
@@ -24,41 +188,31 @@ const AuditPlans: React.FC = () => {
       key: 'name',
     },
     {
-      title: '审计类型',
-      dataIndex: 'auditType',
-      key: 'auditType',
-      width: 120,
-      render: (type: string) => {
-        const typeMap: Record<string, string> = {
-          financial: '财务审计',
-          operational: '运营审计',
-          compliance: '合规审计',
-          it: 'IT审计',
-          special: '专项审计',
-        }
-        return typeMap[type] || type
-      },
+      title: '年度',
+      dataIndex: 'year',
+      key: 'year',
+      width: 80,
     },
     {
       title: '审计对象',
-      dataIndex: 'auditObjectName',
-      key: 'auditObjectName',
+      key: 'auditObject',
       width: 150,
+      render: (_: unknown, record: AuditPlanItem) => record.auditObject?.name || '-',
     },
     {
       title: '主审计师',
-      dataIndex: 'leadAuditor',
       key: 'leadAuditor',
       width: 100,
+      render: (_: unknown, record: AuditPlanItem) => record.leadAuditor?.name || '-',
     },
     {
       title: '计划期间',
       key: 'period',
       width: 220,
-      render: (_, record) => (
+      render: (_: unknown, record: AuditPlanItem) => (
         <div>
-          <div className="text-sm">{formatDate(record.planStartDate)}</div>
-          <div className="text-xs text-gray-400">至 {formatDate(record.planEndDate)}</div>
+          <div className="text-sm">{formatDate(record.startDate)}</div>
+          <div className="text-xs text-gray-400">至 {formatDate(record.endDate)}</div>
         </div>
       ),
     },
@@ -66,98 +220,134 @@ const AuditPlans: React.FC = () => {
       title: '进度',
       key: 'progress',
       width: 150,
-      render: (_, record) => {
-        const progressMap: Record<string, number> = {
-          draft: 0,
-          approved: 10,
-          in_progress: 50,
-          completed: 100,
-          cancelled: 0,
-        }
-        return (
-          <Progress
-            percent={progressMap[record.status] || 0}
-            status={record.status === 'cancelled' ? 'exception' : record.status === 'completed' ? 'success' : 'active'}
-          />
-        )
-      },
+      render: (_: unknown, record: AuditPlanItem) => (
+        <Progress
+          percent={record.progress}
+          status={
+            record.status === 'cancelled'
+              ? 'exception'
+              : record.status === 'completed'
+              ? 'success'
+              : 'active'
+          }
+        />
+      ),
     },
     {
       title: '状态',
       dataIndex: 'status',
       key: 'status',
       width: 100,
-      render: (status: string) => (
-        <Tag color={getStatusColor(status)}>{getStatusText(status)}</Tag>
+      render: (s: string) => (
+        <Tag color={getStatusColor(s)}>{getStatusText(s)}</Tag>
       ),
     },
     {
       title: '操作',
       key: 'action',
-      width: 200,
+      width: 260,
       fixed: 'right' as const,
-      render: (_, record) => (
+      render: (_: unknown, record: AuditPlanItem) => (
         <Space>
           <Button type="link" size="small">
             查看
           </Button>
           {record.status === 'approved' && (
-            <Button type="link" size="small" icon={<PlayCircleOutlined />}>
+            <Button type="link" size="small" icon={<PlayCircleOutlined />} onClick={() => handleStart(record.id)}>
               启动
             </Button>
           )}
           {record.status === 'in_progress' && (
-            <Button type="link" size="small" icon={<CheckCircleOutlined />}>
+            <Button type="link" size="small" icon={<CheckCircleOutlined />} onClick={() => handleComplete(record.id)}>
               完成
             </Button>
           )}
           {record.status === 'draft' && (
-            <Button type="link" size="small">
-              编辑
+            <Button type="link" size="small" icon={<SwapOutlined />} onClick={() => handleReassign(record)}>
+              分配
             </Button>
           )}
+          <Popconfirm
+            title="确定删除该审计计划？"
+            onConfirm={() => handleDelete(record.id)}
+            okText="确定"
+            cancelText="取消"
+          >
+            <Button type="link" size="small" danger icon={<DeleteOutlined />}>
+              删除
+            </Button>
+          </Popconfirm>
         </Space>
       ),
     },
   ]
 
-  const data = Array.from({ length: 10 }, (_, i) => ({
-    key: i + 1,
-    code: `AP${String(i + 1).padStart(4, '0')}`,
-    name: [
-      '2024年度财务审计',
-      '信息系统安全审计',
-      '采购流程合规审计',
-      '人力资源管理审计',
-      '销售合同专项审计',
-      '生产成本核算审计',
-      '研发项目管理审计',
-      '行政管理费用审计',
-      '合同管理制度审计',
-      '内部控制评价审计',
-    ][i],
-    auditType: ['financial', 'it', 'compliance', 'operational', 'special', 'financial', 'operational', 'financial', 'compliance', 'special'][i],
-    auditObjectId: `AO${String(i + 1).padStart(4, '0')}`,
-    auditObjectName: ['财务部', 'IT部门', '采购部', '人力资源部', '销售部', '生产部', '研发部', '行政部', '法务部', '审计部'][i],
-    leadAuditor: ['李审计', '王审计', '张审计', '刘审计', '陈审计', '李审计', '王审计', '张审计', '刘审计', '陈审计'][i],
-    teamMembers: ['审计员A,审计员B', '审计员C,审计员D', '审计员A,审计员C', '审计员B,审计员D', '审计员A,审计员B', '审计员C,审计员D', '审计员A,审计员C', '审计员B,审计员D', '审计员A,审计员B', '审计员C,审计员D'],
-    planStartDate: `2024-0${Math.floor(i / 3) + 1}-01`,
-    planEndDate: `2024-0${Math.floor(i / 3) + 2}-28`,
-    actualStartDate: i > 2 ? `2024-0${Math.floor(i / 3) + 1}-05` : undefined,
-    actualEndDate: i > 5 ? `2024-0${Math.floor(i / 3) + 2}-25` : undefined,
-    status: ['draft', 'approved', 'in_progress', 'in_progress', 'completed', 'completed', 'in_progress', 'draft', 'approved', 'cancelled'][i],
-  }))
-
   return (
     <div className="space-y-4">
+      <Card className="shadow-sm" bordered={false}>
+        <div className="flex flex-wrap gap-4 items-end">
+          <div>
+            <div className="text-sm text-gray-500 mb-1">关键词</div>
+            <Input
+              placeholder="计划名称"
+              prefix={<SearchOutlined />}
+              style={{ width: 200 }}
+              value={keyword}
+              onChange={(e) => setKeyword(e.target.value)}
+              allowClear
+            />
+          </div>
+          <div>
+            <div className="text-sm text-gray-500 mb-1">年度</div>
+            <Select
+              placeholder="请选择"
+              style={{ width: 120 }}
+              allowClear
+              value={year}
+              onChange={(val) => setYear(val)}
+            >
+              {yearOptions.map((y) => (
+                <Option key={y} value={y}>
+                  {y}年
+                </Option>
+              ))}
+            </Select>
+          </div>
+          <div>
+            <div className="text-sm text-gray-500 mb-1">状态</div>
+            <Select
+              placeholder="请选择"
+              style={{ width: 150 }}
+              allowClear
+              value={status}
+              onChange={(val) => setStatus(val)}
+            >
+              <Option value="draft">草稿</Option>
+              <Option value="approved">已批准</Option>
+              <Option value="in_progress">进行中</Option>
+              <Option value="completed">已完成</Option>
+              <Option value="cancelled">已取消</Option>
+            </Select>
+          </div>
+          <Space>
+            <Button type="primary" icon={<SearchOutlined />} onClick={handleSearch}>
+              查询
+            </Button>
+            <Button icon={<ReloadOutlined />} onClick={handleReset}>
+              重置
+            </Button>
+          </Space>
+        </div>
+      </Card>
+
       <Card
         className="shadow-sm"
         bordered={false}
         title="审计计划列表"
         extra={
           <Space>
-            <Button type="primary" icon={<PlusOutlined />}>
-              新增计划
+            <Button type="primary" icon={<PlusOutlined />} onClick={() => setGenerateModalOpen(true)}>
+              生成计划
             </Button>
           </Space>
         }
@@ -165,14 +355,72 @@ const AuditPlans: React.FC = () => {
         <Table
           columns={columns}
           dataSource={data}
+          rowKey="id"
+          loading={loading}
           pagination={{
+            current: page,
+            pageSize,
+            total,
             showSizeChanger: true,
             showQuickJumper: true,
-            showTotal: (total) => `共 ${total} 条`,
+            showTotal: (t) => `共 ${t} 条`,
           }}
-          scroll={{ x: 1400 }}
+          onChange={handleTableChange}
+          scroll={{ x: 1500 }}
         />
       </Card>
+
+      <Modal
+        title="生成审计计划"
+        open={generateModalOpen}
+        onOk={handleGenerate}
+        onCancel={() => {
+          setGenerateModalOpen(false)
+          form.resetFields()
+        }}
+        okText="生成"
+        cancelText="取消"
+      >
+        <Form form={form} layout="vertical">
+          <Form.Item name="name" label="计划名称" rules={[{ required: true, message: '请输入计划名称' }]}>
+            <Input placeholder="请输入计划名称" />
+          </Form.Item>
+          <Form.Item name="auditObjectId" label="审计对象ID" rules={[{ required: true, message: '请输入审计对象ID' }]}>
+            <Input placeholder="请输入审计对象ID" />
+          </Form.Item>
+          <Form.Item name="auditType" label="审计类型" rules={[{ required: true, message: '请选择审计类型' }]}>
+            <Select placeholder="请选择审计类型">
+              <Option value="financial">财务审计</Option>
+              <Option value="operational">运营审计</Option>
+              <Option value="compliance">合规审计</Option>
+              <Option value="it">IT审计</Option>
+              <Option value="special">专项审计</Option>
+            </Select>
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      <Modal
+        title="重新分配审计师"
+        open={reassignModalOpen}
+        onOk={handleReassignSubmit}
+        onCancel={() => {
+          setReassignModalOpen(false)
+          setReassignRecord(null)
+          reassignForm.resetFields()
+        }}
+        okText="确认"
+        cancelText="取消"
+      >
+        <Form form={reassignForm} layout="vertical">
+          <Form.Item name="leadAuditor" label="主审计师ID" rules={[{ required: true, message: '请输入主审计师ID' }]}>
+            <Input placeholder="请输入主审计师ID" />
+          </Form.Item>
+          <Form.Item name="teamMembers" label="团队成员ID（逗号分隔）">
+            <Input placeholder="请输入团队成员ID，多个用逗号分隔" />
+          </Form.Item>
+        </Form>
+      </Modal>
     </div>
   )
 }

@@ -11,10 +11,11 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
 
   async onModuleInit() {
     try {
-      const Redis = await import('ioredis');
+      const ioredis = await import('ioredis');
+      const Redis = (ioredis as any).default || ioredis;
       const redisUrl = this.configService.get('REDIS_URL') || 'redis://localhost:6379';
       
-      this.client = new Redis.default(redisUrl, {
+      this.client = new Redis(redisUrl, {
         enableOfflineQueue: false,
         maxRetriesPerRequest: 1,
         lazyConnect: true,

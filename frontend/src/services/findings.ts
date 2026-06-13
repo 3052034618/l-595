@@ -28,8 +28,11 @@ export const deleteFinding = (id: string): Promise<ApiResponse<void>> => {
   return del<void>(`/findings/${id}`)
 }
 
-export const confirmFinding = (id: string): Promise<ApiResponse<void>> => {
-  return post<void>(`/findings/${id}/confirm`)
+export const confirmFinding = (
+  id: string,
+  data: { confirmed: boolean; comment?: string }
+): Promise<ApiResponse<void>> => {
+  return post<void>(`/findings/${id}/confirm`, data)
 }
 
 export const closeFinding = (id: string): Promise<ApiResponse<void>> => {

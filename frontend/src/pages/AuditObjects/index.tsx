@@ -1,18 +1,109 @@
-import React from 'react'
-import { Card, Table, Button, Space, Tag, Input, Select, DatePicker } from 'antd'
-import { PlusOutlined, SearchOutlined, DownloadOutlined } from '@ant-design/icons'
+import React, { useState, useEffect } from 'react'
+import { Card, Table, Button, Space, Tag, Input, Select, Popconfirm, message } from 'antd'
+import { PlusOutlined, SearchOutlined, DownloadOutlined, DeleteOutlined, ReloadOutlined } from '@ant-design/icons'
 import { useAppStore } from '@/store/appStore'
-import { getStatusColor, getStatusText, getRiskLevelColor, getRiskLevelText } from '@/utils'
+import { getStatusColor, getStatusText, getRiskLevelColor, getRiskLevelText, formatDate } from '@/utils'
+import { getAuditObjects, deleteAuditObject } from '@/services/auditObjects'
+import type { TablePaginationConfig } from 'antd/es/table'
 
-const { RangePicker } = DatePicker
 const { Option } = Select
+
+interface AuditObjectItem {
+  id: string
+  name: string
+  code: string
+  type: string
+  industry?: string
+  description?: string
+  riskScore: number
+  riskLevel: string
+  lastAssessmentAt?: string
+  contactPerson?: string
+  contactPhone?: string
+  status: string
+  createdAt: string
+  updatedAt: string
+}
 
 const AuditObjects: React.FC = () => {
   const { setCurrentPage } = useAppStore()
 
-  React.useEffect(() => {
+  useEffect(() => {
     setCurrentPage('/audit-objects')
   }, [setCurrentPage])
+
+  const [loading, setLoading] = useState(false)
+  const [data, setData] = useState<AuditObjectItem[]>([])
+  const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(10)
+  const [total, setTotal] = useState(0)
+
+  const [keyword, setKeyword] = useState('')
+  const [riskLevel, setRiskLevel] = useState<string | undefined>()
+  const [industry, setIndustry] = useState<string | undefined>()
+  const [status, setStatus] = useState<string | undefined>()
+
+  const fetchData = async () => {
+    setLoading(true)
+    try {
+      const params: Record<string, unknown> = {
+        page,
+        pageSize,
+      }
+      if (keyword) params.keyword = keyword
+      if (riskLevel) params.riskLevel = riskLevel
+      if (industry) params.industry = industry
+      if (status) params.status = status
+
+      const res = await getAuditObjects(params)
+      if (res.code === 0 && res.data) {
+        setData(res.data.items as unknown as AuditObjectItem[])
+        setTotal(res.data.total)
+      }
+    } catch (error) {
+      console.error('获取审计对象列表失败:', error)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    fetchData()
+  }, [page, pageSize])
+
+  const handleSearch = () => {
+    setPage(1)
+    setTimeout(fetchData, 0)
+  }
+
+  const handleReset = () => {
+    setKeyword('')
+    setRiskLevel(undefined)
+    setIndustry(undefined)
+    setStatus(undefined)
+    setPage(1)
+    setTimeout(fetchData, 0)
+  }
+
+  const handleDelete = async (id: string) => {
+    try {
+      const res = await deleteAuditObject(id)
+      if (res.code === 0) {
+        message.success('删除成功')
+        fetchData()
+      }
+    } catch (error) {
+      console.error('删除失败:', error)
+    }
+  }
+
+  const handleTableChange = (pagination: TablePaginationConfig) => {
+    if (pagination.current) setPage(pagination.current)
+    if (pagination.pageSize) {
+      setPageSize(pagination.pageSize)
+      setPage(1)
+    }
+  }
 
   const columns = [
     {
@@ -34,6 +125,7 @@ const AuditObjects: React.FC = () => {
       render: (type: string) => {
         const typeMap: Record<string, string> = {
           department: '部门',
+          subsidiary: '子公司',
           project: '项目',
           system: '系统',
           process: '流程',
@@ -43,16 +135,24 @@ const AuditObjects: React.FC = () => {
       },
     },
     {
-      title: '所属部门',
-      dataIndex: 'department',
-      key: 'department',
-      width: 120,
+      title: '所属部门/行业',
+      dataIndex: 'industry',
+      key: 'industry',
+      width: 140,
+      render: (val: string) => val || '-',
     },
     {
       title: '负责人',
-      dataIndex: 'manager',
-      key: 'manager',
+      dataIndex: 'contactPerson',
+      key: 'contactPerson',
       width: 100,
+      render: (val: string) => val || '-',
+    },
+    {
+      title: '风险分数',
+      dataIndex: 'riskScore',
+      key: 'riskScore',
+      width: 90,
     },
     {
       title: '风险等级',
@@ -68,28 +168,30 @@ const AuditObjects: React.FC = () => {
       dataIndex: 'status',
       key: 'status',
       width: 100,
-      render: (status: string) => (
-        <Tag color={getStatusColor(status)}>{getStatusText(status)}</Tag>
+      render: (s: string) => (
+        <Tag color={getStatusColor(s)}>{getStatusText(s)}</Tag>
       ),
     },
     {
       title: '上次审计',
-      dataIndex: 'lastAuditDate',
-      key: 'lastAuditDate',
+      dataIndex: 'lastAssessmentAt',
+      key: 'lastAssessmentAt',
       width: 120,
+      render: (date: string) => formatDate(date),
     },
     {
-      title: '下次审计',
-      dataIndex: 'nextAuditDate',
-      key: 'nextAuditDate',
+      title: '创建日期',
+      dataIndex: 'createdAt',
+      key: 'createdAt',
       width: 120,
+      render: (date: string) => formatDate(date),
     },
     {
       title: '操作',
       key: 'action',
-      width: 150,
+      width: 180,
       fixed: 'right' as const,
-      render: () => (
+      render: (_: unknown, record: AuditObjectItem) => (
         <Space>
           <Button type="link" size="small">
             查看
@@ -97,26 +199,20 @@ const AuditObjects: React.FC = () => {
           <Button type="link" size="small">
             编辑
           </Button>
-          <Button type="link" size="small" danger>
-            删除
-          </Button>
+          <Popconfirm
+            title="确定删除该审计对象？"
+            onConfirm={() => handleDelete(record.id)}
+            okText="确定"
+            cancelText="取消"
+          >
+            <Button type="link" size="small" danger icon={<DeleteOutlined />}>
+              删除
+            </Button>
+          </Popconfirm>
         </Space>
       ),
     },
   ]
-
-  const data = Array.from({ length: 10 }, (_, i) => ({
-    key: i + 1,
-    code: `AO${String(i + 1).padStart(4, '0')}`,
-    name: ['财务部', 'IT部门', '采购部', '人力资源部', '销售部', '生产部', '研发部', '行政部', '法务部', '审计部'][i],
-    type: ['department', 'department', 'department', 'department', 'department', 'department', 'department', 'department', 'department', 'department'][i],
-    department: ['集团总部', '集团总部', '集团总部', '集团总部', '集团总部', '分子公司', '分子公司', '集团总部', '集团总部', '集团总部'][i],
-    manager: ['张三', '李四', '王五', '赵六', '钱七', '孙八', '周九', '吴十', '郑十一', '王十二'][i],
-    riskLevel: ['low', 'medium', 'high', 'critical', 'low', 'medium', 'high', 'low', 'medium', 'low'][i],
-    status: ['active', 'active', 'active', 'inactive', 'active', 'active', 'active', 'archived', 'active', 'active'][i],
-    lastAuditDate: `2024-0${i + 1}-15`,
-    nextAuditDate: `2024-0${i + 1}-15`,
-  }))
 
   return (
     <div className="space-y-4">
@@ -124,44 +220,59 @@ const AuditObjects: React.FC = () => {
         <div className="flex flex-wrap gap-4 items-end">
           <div>
             <div className="text-sm text-gray-500 mb-1">关键词</div>
-            <Input placeholder="请输入名称/编码" prefix={<SearchOutlined />} style={{ width: 200 }} />
-          </div>
-          <div>
-            <div className="text-sm text-gray-500 mb-1">类型</div>
-            <Select placeholder="请选择" style={{ width: 150 }} allowClear>
-              <Option value="department">部门</Option>
-              <Option value="project">项目</Option>
-              <Option value="system">系统</Option>
-              <Option value="process">流程</Option>
-              <Option value="other">其他</Option>
-            </Select>
+            <Input
+              placeholder="请输入名称/编码"
+              prefix={<SearchOutlined />}
+              style={{ width: 200 }}
+              value={keyword}
+              onChange={(e) => setKeyword(e.target.value)}
+              allowClear
+            />
           </div>
           <div>
             <div className="text-sm text-gray-500 mb-1">风险等级</div>
-            <Select placeholder="请选择" style={{ width: 150 }} allowClear>
+            <Select
+              placeholder="请选择"
+              style={{ width: 150 }}
+              allowClear
+              value={riskLevel}
+              onChange={(val) => setRiskLevel(val)}
+            >
               <Option value="low">低风险</Option>
               <Option value="medium">中风险</Option>
               <Option value="high">高风险</Option>
-              <Option value="critical">极高风险</Option>
             </Select>
+          </div>
+          <div>
+            <div className="text-sm text-gray-500 mb-1">所属行业</div>
+            <Input
+              placeholder="请输入行业"
+              style={{ width: 150 }}
+              value={industry}
+              onChange={(e) => setIndustry(e.target.value)}
+              allowClear
+            />
           </div>
           <div>
             <div className="text-sm text-gray-500 mb-1">状态</div>
-            <Select placeholder="请选择" style={{ width: 150 }} allowClear>
+            <Select
+              placeholder="请选择"
+              style={{ width: 150 }}
+              allowClear
+              value={status}
+              onChange={(val) => setStatus(val)}
+            >
               <Option value="active">正常</Option>
               <Option value="inactive">停用</Option>
-              <Option value="archived">已归档</Option>
             </Select>
           </div>
-          <div>
-            <div className="text-sm text-gray-500 mb-1">创建时间</div>
-            <RangePicker />
-          </div>
           <Space>
-            <Button type="primary" icon={<SearchOutlined />}>
+            <Button type="primary" icon={<SearchOutlined />} onClick={handleSearch}>
               查询
             </Button>
-            <Button>重置</Button>
+            <Button icon={<ReloadOutlined />} onClick={handleReset}>
+              重置
+            </Button>
           </Space>
         </div>
       </Card>
@@ -182,12 +293,18 @@ const AuditObjects: React.FC = () => {
         <Table
           columns={columns}
           dataSource={data}
+          rowKey="id"
+          loading={loading}
           pagination={{
+            current: page,
+            pageSize,
+            total,
             showSizeChanger: true,
             showQuickJumper: true,
-            showTotal: (total) => `共 ${total} 条`,
+            showTotal: (t) => `共 ${t} 条`,
           }}
-          scroll={{ x: 1200 }}
+          onChange={handleTableChange}
+          scroll={{ x: 1400 }}
         />
       </Card>
     </div>

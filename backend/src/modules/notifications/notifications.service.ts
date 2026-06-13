@@ -57,8 +57,8 @@ export class NotificationsService {
     type?: string;
     priority?: string;
   }) {
-    const page = query.page || 1;
-    const pageSize = query.pageSize || 20;
+    const page = Number(query.page) || 1;
+    const pageSize = Number(query.pageSize) || 20;
     const skip = (page - 1) * pageSize;
 
     const where: any = {

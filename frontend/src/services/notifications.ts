@@ -1,14 +1,18 @@
 import { get, post, put, del } from './api'
-import type { Notification, PageResult, PageParams, ApiResponse } from '@/types'
+import type { Notification, PageParams, ApiResponse, NotificationPageResult } from '@/types'
 
 export const getNotifications = (
   params?: PageParams
-): Promise<ApiResponse<PageResult<Notification>>> => {
-  return get<PageResult<Notification>>('/notifications', params)
+): Promise<ApiResponse<NotificationPageResult<Notification>>> => {
+  return get<NotificationPageResult<Notification>>('/notifications', params)
 }
 
-export const getUnreadCount = (): Promise<ApiResponse<number>> => {
-  return get<number>('/notifications/unread-count')
+export const getUnreadCount = async (): Promise<ApiResponse<number>> => {
+  const response = await getNotifications({ pageSize: 1 })
+  return {
+    ...response,
+    data: response.data.unreadCount,
+  }
 }
 
 export const markAsRead = (id: string): Promise<ApiResponse<void>> => {
@@ -16,7 +20,7 @@ export const markAsRead = (id: string): Promise<ApiResponse<void>> => {
 }
 
 export const markAllAsRead = (): Promise<ApiResponse<void>> => {
-  return post<void>('/notifications/mark-all-read')
+  return post<void>('/notifications/read-all')
 }
 
 export const deleteNotification = (id: string): Promise<ApiResponse<void>> => {

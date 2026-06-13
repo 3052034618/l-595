@@ -1,8 +1,11 @@
-import { Controller, Get, Post, Body, Param, Delete, Query } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, Delete, Query, Res, NotFoundException } from '@nestjs/common';
 import { ReportsService } from './reports.service';
 import { GenerateReportDto } from './dto/generate-report.dto';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { GetUser } from '../../common/decorators/get-user.decorator';
+import { Response } from 'express';
+import { createReadStream, existsSync } from 'fs';
+import { join } from 'path';
 
 interface ApiResponse<T = any> {
   code: number;
@@ -12,9 +15,20 @@ interface ApiResponse<T = any> {
 }
 
 @Controller('reports')
-@Roles('admin', 'audit_manager')
+@Roles('admin', 'audit_manager', 'auditor', 'executive')
 export class ReportsController {
   constructor(private readonly reportsService: ReportsService) {}
+
+  @Get('dashboard-stats')
+  async getDashboardStats(): Promise<ApiResponse> {
+    const data = await this.reportsService.getDashboardStats();
+    return {
+      code: 0,
+      message: '查询成功',
+      data,
+      timestamp: Date.now(),
+    };
+  }
 
   @Post('generate')
   async generateReport(
@@ -58,6 +72,43 @@ export class ReportsController {
       data,
       timestamp: Date.now(),
     };
+  }
+
+  @Get(':id/download/:format')
+  async downloadReport(
+    @Param('id') id: string,
+    @Param('format') format: 'excel' | 'pdf',
+    @Res() res: any,
+  ) {
+    try {
+      const downloadInfo = await this.reportsService.getDownloadUrl(id, format);
+
+      const contentType =
+        format === 'excel'
+          ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+          : 'application/pdf';
+
+      const safeFileName = encodeURIComponent(downloadInfo.fileName);
+      res.setHeader('Content-Type', contentType);
+      res.setHeader(
+        'Content-Disposition',
+        `attachment; filename*=UTF-8''${safeFileName}`,
+      );
+
+      const fileStream = createReadStream(downloadInfo.filePath);
+      fileStream.pipe(res);
+    } catch (error) {
+      if (error instanceof NotFoundException) {
+        res.status(404).json({
+          code: 404,
+          message: error.message,
+          data: null,
+          timestamp: Date.now(),
+        });
+      } else {
+        throw error;
+      }
+    }
   }
 
   @Post(':id/export')

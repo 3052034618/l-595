@@ -28,12 +28,18 @@ const Header: React.FC = () => {
     fetchNotifications,
     fetchUnreadCount,
     markNotificationRead,
+    startPolling,
+    stopPolling,
   } = useAppStore()
   const [notificationOpen, setNotificationOpen] = useState(false)
 
   useEffect(() => {
     fetchUnreadCount()
-  }, [fetchUnreadCount])
+    startPolling()
+    return () => {
+      stopPolling()
+    }
+  }, [fetchUnreadCount, startPolling, stopPolling])
 
   useEffect(() => {
     if (notificationOpen) {

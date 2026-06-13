@@ -30,9 +30,9 @@ export const deleteRectification = (id: string): Promise<ApiResponse<void>> => {
 
 export const addRectificationUpdate = (
   id: string,
-  data: { progress: number; description: string }
+  data: { progress: number; description: string; attachments?: string[] }
 ): Promise<ApiResponse<void>> => {
-  return post<void>(`/rectifications/${id}/updates`, data)
+  return post<void>(`/rectifications/${id}/update`, data)
 }
 
 export const verifyCompletion = (

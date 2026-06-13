@@ -1,5 +1,5 @@
-import React from 'react'
-import { Card, Row, Col, Statistic, Progress, Tag } from 'antd'
+import React, { useState, useEffect } from 'react'
+import { Card, Row, Col, Statistic, Progress, Tag, Spin, Empty } from 'antd'
 import {
   FileTextOutlined,
   SearchOutlined,
@@ -7,26 +7,70 @@ import {
   ToolOutlined,
   CheckCircleOutlined,
   ClockCircleOutlined,
+  TeamOutlined,
 } from '@ant-design/icons'
 import ReactECharts from 'echarts-for-react'
 import { useAppStore } from '@/store/appStore'
-import { getRiskLevelColor, getRiskLevelText } from '@/utils'
+import { getRiskLevelColor, getRiskLevelText, formatDateTime } from '@/utils'
+import { getDashboardStats } from '@/services/reports'
+import { getRiskAssessments } from '@/services/riskAssessment'
+import type { ApiResponse } from '@/types'
+
+interface DashboardStats {
+  overview: {
+    totalAuditObjects: number
+    activeAuditPlans: number
+    pendingFindings: number
+    inProgressRectifications: number
+  }
+  findingsByRiskLevel: {
+    high: number
+    medium: number
+    low: number
+  }
+  recentAssessments: Array<{
+    id: string
+    auditObjectName: string
+    currentLevel: string
+    currentScore: number
+    assessedAt: string
+  }>
+}
 
 const Dashboard: React.FC = () => {
   const { setCurrentPage } = useAppStore()
+  const [loading, setLoading] = useState(false)
+  const [stats, setStats] = useState<DashboardStats | null>(null)
 
   React.useEffect(() => {
     setCurrentPage('/dashboard')
   }, [setCurrentPage])
 
+  const fetchData = async () => {
+    setLoading(true)
+    try {
+      const res = (await getDashboardStats()) as ApiResponse<DashboardStats>
+      if (res.code === 0) {
+        setStats(res.data)
+      }
+    } catch (error) {
+      console.error('Fetch dashboard stats error:', error)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    fetchData()
+  }, [])
+
+  const totalFindings = stats
+    ? stats.findingsByRiskLevel.high + stats.findingsByRiskLevel.medium + stats.findingsByRiskLevel.low
+    : 0
+
   const riskDistributionOption = {
-    tooltip: {
-      trigger: 'item',
-    },
-    legend: {
-      orient: 'vertical',
-      left: 'left',
-    },
+    tooltip: { trigger: 'item' },
+    legend: { orient: 'vertical', left: 'left' },
     series: [
       {
         name: '风险分布',
@@ -38,82 +82,115 @@ const Dashboard: React.FC = () => {
           borderColor: '#fff',
           borderWidth: 2,
         },
-        label: {
-          show: false,
-          position: 'center',
-        },
+        label: { show: false, position: 'center' },
         emphasis: {
-          label: {
-            show: true,
-            fontSize: 20,
-            fontWeight: 'bold',
-          },
+          label: { show: true, fontSize: 20, fontWeight: 'bold' },
         },
-        labelLine: {
-          show: false,
-        },
-        data: [
-          { value: 5, name: '极高风险', itemStyle: { color: '#f5222d' } },
-          { value: 12, name: '高风险', itemStyle: { color: '#fa8c16' } },
-          { value: 25, name: '中风险', itemStyle: { color: '#faad14' } },
-          { value: 58, name: '低风险', itemStyle: { color: '#52c41a' } },
-        ],
+        labelLine: { show: false },
+        data: stats
+          ? [
+              { value: stats.findingsByRiskLevel.high, name: '高风险', itemStyle: { color: '#f5222d' } },
+              { value: stats.findingsByRiskLevel.medium, name: '中风险', itemStyle: { color: '#faad14' } },
+              { value: stats.findingsByRiskLevel.low, name: '低风险', itemStyle: { color: '#52c41a' } },
+            ]
+          : [],
       },
     ],
   }
 
   const auditTrendOption = {
-    tooltip: {
-      trigger: 'axis',
-    },
-    legend: {
-      data: ['审计计划', '发现问题', '已完成整改'],
-    },
-    grid: {
-      left: '3%',
-      right: '4%',
-      bottom: '3%',
-      containLabel: true,
-    },
+    tooltip: { trigger: 'axis' },
+    legend: { data: ['新增评估', '高风险对象'] },
+    grid: { left: '3%', right: '4%', bottom: '3%', containLabel: true },
     xAxis: {
       type: 'category',
       boundaryGap: false,
-      data: ['1月', '2月', '3月', '4月', '5月', '6月'],
+      data: stats?.recentAssessments
+        ? stats.recentAssessments.map((a) => formatDateTime(a.assessedAt).slice(5, 10)).reverse()
+        : [],
     },
-    yAxis: {
-      type: 'value',
-    },
-    series: [
-      {
-        name: '审计计划',
-        type: 'line',
-        data: [12, 15, 18, 14, 20, 16],
-        smooth: true,
-        itemStyle: { color: '#1e3a5f' },
-      },
-      {
-        name: '发现问题',
-        type: 'line',
-        data: [25, 30, 28, 35, 40, 32],
-        smooth: true,
-        itemStyle: { color: '#fa8c16' },
-      },
-      {
-        name: '已完成整改',
-        type: 'line',
-        data: [20, 25, 24, 30, 35, 28],
-        smooth: true,
-        itemStyle: { color: '#52c41a' },
-      },
-    ],
+    yAxis: { type: 'value' },
+    series: stats
+      ? [
+          {
+            name: '风险分数',
+            type: 'line',
+            data: stats.recentAssessments.map((a) => a.currentScore).reverse(),
+            smooth: true,
+            itemStyle: { color: '#1e3a5f' },
+            areaStyle: {
+              color: {
+                type: 'linear',
+                x: 0, y: 0, x2: 0, y2: 1,
+                colorStops: [
+                  { offset: 0, color: 'rgba(30,58,95,0.3)' },
+                  { offset: 1, color: 'rgba(30,58,95,0.05)' },
+                ],
+              },
+            },
+          },
+          {
+            name: '高风险标记',
+            type: 'scatter',
+            data: stats.recentAssessments
+              .map((a) => (a.currentLevel === 'high' ? a.currentScore : null))
+              .reverse(),
+            symbolSize: 15,
+            itemStyle: { color: '#f5222d' },
+          },
+        ]
+      : [],
   }
 
-  const rectificationProgress = [
-    { name: '财务审计整改', progress: 85, status: 'high' },
-    { name: 'IT系统审计整改', progress: 60, status: 'medium' },
-    { name: '采购流程审计整改', progress: 100, status: 'low' },
-    { name: '人力资源审计整改', progress: 30, status: 'critical' },
+  const rectificationProgress = stats?.recentAssessments
+    ? stats.recentAssessments.slice(0, 4).map((a) => ({
+        name: a.auditObjectName,
+        progress: Math.max(a.currentScore, 5),
+        status: a.currentLevel,
+      }))
+    : []
+
+  const recentActivities = [
+    {
+      icon: <CheckCircleOutlined className="text-green-500" />,
+      title: stats
+        ? `审计对象总数: ${stats.overview.totalAuditObjects} 个`
+        : '数据加载中...',
+      time: '全部活跃对象',
+    },
+    {
+      icon: <AlertOutlined className="text-orange-500" />,
+      title: stats
+        ? `进行中的审计计划: ${stats.overview.activeAuditPlans} 项`
+        : '数据加载中...',
+      time: '最近30天',
+    },
+    {
+      icon: <SearchOutlined className="text-blue-500" />,
+      title: stats ? `待处理审计发现: ${stats.overview.pendingFindings} 项` : '数据加载中...',
+      time: '需要立即关注',
+    },
+    {
+      icon: <ToolOutlined className="text-purple-500" />,
+      title: stats
+        ? `整改中任务: ${stats.overview.inProgressRectifications} 项`
+        : '数据加载中...',
+      time: '跟踪处理中',
+    },
+    {
+      icon: <TeamOutlined className="text-cyan-500" />,
+      title: stats ? `最近风险评估: ${stats.recentAssessments?.length || 0} 次` : '数据加载中...',
+      time: '最新记录',
+    },
   ]
+
+  if (loading && !stats) {
+    return (
+      <div className="flex items-center justify-center h-96">
+        <Spin size="large" tip="加载仪表盘数据..." />
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-6">
@@ -128,53 +205,52 @@ const Dashboard: React.FC = () => {
         <Col xs={24} sm={12} lg={6}>
           <Card>
             <Statistic
-              title="审计对象"
-              value={100}
+              title="审计对象总数"
+              value={stats?.overview.totalAuditObjects || 0}
               prefix={<FileTextOutlined className="text-blue-500" />}
               valueStyle={{ color: '#1e3a5f' }}
             />
             <div className="mt-2 text-sm text-gray-500">
-              较上月 <span className="text-green-500">+5%</span>
+              状态: <span className="text-green-500">正常运行</span>
             </div>
           </Card>
         </Col>
         <Col xs={24} sm={12} lg={6}>
           <Card>
             <Statistic
-              title="审计发现"
-              value={130}
+              title="活跃审计计划"
+              value={stats?.overview.activeAuditPlans || 0}
               prefix={<SearchOutlined className="text-orange-500" />}
               valueStyle={{ color: '#fa8c16' }}
             />
             <div className="mt-2 text-sm text-gray-500">
-              待处理 <span className="text-orange-500">32</span> 项
+              待处理发现 <span className="text-orange-500">{stats?.overview.pendingFindings || 0}</span> 项
             </div>
           </Card>
         </Col>
         <Col xs={24} sm={12} lg={6}>
           <Card>
             <Statistic
-              title="风险评估"
-              value={17}
+              title="发现问题总数"
+              value={totalFindings}
               prefix={<AlertOutlined className="text-red-500" />}
               valueStyle={{ color: '#f5222d' }}
             />
             <div className="mt-2 text-sm text-gray-500">
-              高风险 <span className="text-red-500">5</span> 项
+              高风险 <span className="text-red-500">{stats?.findingsByRiskLevel.high || 0}</span> 项
             </div>
           </Card>
         </Col>
         <Col xs={24} sm={12} lg={6}>
           <Card>
             <Statistic
-              title="整改完成率"
-              value={85}
-              suffix="%"
+              title="整改跟踪"
+              value={stats?.overview.inProgressRectifications || 0}
               prefix={<ToolOutlined className="text-green-500" />}
               valueStyle={{ color: '#52c41a' }}
             />
             <div className="mt-2 text-sm text-gray-500">
-              已完成 <span className="text-green-500">28</span> / 33 项
+              整改处理中任务
             </div>
           </Card>
         </Col>
@@ -182,75 +258,64 @@ const Dashboard: React.FC = () => {
 
       <Row gutter={[16, 16]}>
         <Col xs={24} lg={12}>
-          <Card title="风险分布" extra={<a href="/risk-assessment">查看详情</a>}>
-            <ReactECharts option={riskDistributionOption} style={{ height: 300 }} />
+          <Card title="风险等级分布" extra={<a href="/risk-assessment">查看详情</a>}>
+            {totalFindings > 0 ? (
+              <ReactECharts option={riskDistributionOption} style={{ height: 300 }} />
+            ) : (
+              <Empty description="暂无风险分布数据" style={{ marginTop: 60 }} />
+            )}
           </Card>
         </Col>
         <Col xs={24} lg={12}>
-          <Card title="审计趋势" extra={<a href="/audit-plans">查看详情</a>}>
-            <ReactECharts option={auditTrendOption} style={{ height: 300 }} />
+          <Card title="近期风险评估趋势" extra={<a href="/risk-assessment">查看详情</a>}>
+            {stats?.recentAssessments && stats.recentAssessments.length > 0 ? (
+              <ReactECharts option={auditTrendOption} style={{ height: 300 }} />
+            ) : (
+              <Empty description="暂无风险评估数据" style={{ marginTop: 60 }} />
+            )}
           </Card>
         </Col>
       </Row>
 
       <Row gutter={[16, 16]}>
         <Col xs={24} lg={12}>
-          <Card title="整改进度" extra={<a href="/rectifications">查看详情</a>}>
-            <div className="space-y-4">
-              {rectificationProgress.map((item, index) => (
-                <div key={index}>
-                  <div className="flex justify-between mb-1">
-                    <span className="text-sm">{item.name}</span>
-                    <Tag color={getRiskLevelColor(item.status)}>
-                      {getRiskLevelText(item.status)}
-                    </Tag>
+          <Card title="被审计对象风险状况" extra={<a href="/rectifications">查看整改</a>}>
+            {rectificationProgress && rectificationProgress.length > 0 ? (
+              <div className="space-y-4">
+                {rectificationProgress.map((item, index) => (
+                  <div key={index}>
+                    <div className="flex justify-between mb-1">
+                      <span className="text-sm">{item.name}</span>
+                      <Tag color={getRiskLevelColor(item.status)}>
+                        {getRiskLevelText(item.status)}
+                      </Tag>
+                    </div>
+                    <Progress
+                      percent={item.progress}
+                      status={
+                        item.progress >= 80
+                          ? 'success'
+                          : item.status === 'high'
+                          ? 'exception'
+                          : 'active'
+                      }
+                    />
                   </div>
-                  <Progress
-                    percent={item.progress}
-                    status={
-                      item.progress === 100
-                        ? 'success'
-                        : item.status === 'critical'
-                        ? 'exception'
-                        : 'active'
-                    }
-                  />
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            ) : (
+              <Empty description="暂无风险评估记录" style={{ marginTop: 60 }} />
+            )}
           </Card>
         </Col>
         <Col xs={24} lg={12}>
-          <Card title="最近活动">
+          <Card title="系统概览">
             <div className="space-y-4">
-              {[
-                {
-                  icon: <CheckCircleOutlined className="text-green-500" />,
-                  title: '财务审计报告已发布',
-                  time: '10分钟前',
-                },
-                {
-                  icon: <AlertOutlined className="text-orange-500" />,
-                  title: '新发现高风险问题 3 项',
-                  time: '1小时前',
-                },
-                {
-                  icon: <ClockCircleOutlined className="text-blue-500" />,
-                  title: 'IT系统审计计划已启动',
-                  time: '2小时前',
-                },
-                {
-                  icon: <ToolOutlined className="text-purple-500" />,
-                  title: '采购流程整改任务已分配',
-                  time: '3小时前',
-                },
-                {
-                  icon: <FileTextOutlined className="text-gray-500" />,
-                  title: '新上传审计证据 15 份',
-                  time: '5小时前',
-                },
-              ].map((item, index) => (
-                <div key={index} className="flex items-center gap-3 pb-3 border-b border-gray-100 last:border-0">
+              {recentActivities.map((item, index) => (
+                <div
+                  key={index}
+                  className="flex items-center gap-3 pb-3 border-b border-gray-100 last:border-0"
+                >
                   <div className="text-xl">{item.icon}</div>
                   <div className="flex-1">
                     <div className="text-sm font-medium">{item.title}</div>

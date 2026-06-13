@@ -20,6 +20,7 @@ const Findings = lazy(() => import('@/pages/Findings'))
 const Rectifications = lazy(() => import('@/pages/Rectifications'))
 const Reports = lazy(() => import('@/pages/Reports'))
 const SystemLogs = lazy(() => import('@/pages/SystemLogs'))
+const Notifications = lazy(() => import('@/pages/Notifications'))
 
 const router = createBrowserRouter([
   {
@@ -113,6 +114,14 @@ const router = createBrowserRouter([
         element: (
           <Suspense fallback={<Loading />}>
             <SystemLogs />
+          </Suspense>
+        ),
+      },
+      {
+        path: 'notifications',
+        element: (
+          <Suspense fallback={<Loading />}>
+            <Notifications />
           </Suspense>
         ),
       },

@@ -120,8 +120,8 @@ export class AuditPlansService {
     status?: string;
     auditObjectId?: string;
   }) {
-    const page = query.page || 1;
-    const pageSize = query.pageSize || 10;
+    const page = Number(query.page) || 1;
+    const pageSize = Number(query.pageSize) || 10;
     const skip = (page - 1) * pageSize;
 
     const where: any = {};
@@ -222,18 +222,24 @@ export class AuditPlansService {
   }
 
   async reassign(id: string, reassignDto: ReassignDto) {
-    const plan = await this.prisma.auditPlan.findUnique({ where: { id } });
+    const plan = await this.prisma.auditPlan.findUnique({
+      where: { id },
+      include: { auditObject: true },
+    });
     if (!plan) {
       throw new NotFoundException('审计计划不存在');
     }
 
     const updateData: any = {};
+    let originalLeadAuditorId = plan.leadAuditorId;
+
     if (reassignDto.leadAuditorId) {
       updateData.leadAuditorId = reassignDto.leadAuditorId;
     }
 
+    let existingAuditors: any[] = [];
     if (reassignDto.auditorIds || reassignDto.leadAuditorId) {
-      const existingAuditors = await this.prisma.planAuditor.findMany({
+      existingAuditors = await this.prisma.planAuditor.findMany({
         where: { auditPlanId: id },
       });
 
@@ -257,7 +263,17 @@ export class AuditPlansService {
       };
     }
 
-    return this.prisma.auditPlan.update({
+    const originalAuditorIds = existingAuditors.map((pa) => pa.auditorId);
+    const newLeadAuditorId = reassignDto.leadAuditorId || originalLeadAuditorId;
+    const newAuditorIds = reassignDto.auditorIds
+      ? [...new Set([...(newLeadAuditorId ? [newLeadAuditorId] : []), ...reassignDto.auditorIds])]
+      : originalAuditorIds;
+
+    const addedAuditorIds = newAuditorIds.filter((id) => !originalAuditorIds.includes(id));
+    const removedAuditorIds = originalAuditorIds.filter((id) => !newAuditorIds.includes(id));
+    const leadAuditorChanged = originalLeadAuditorId !== newLeadAuditorId;
+
+    const result = await this.prisma.auditPlan.update({
       where: { id },
       data: updateData,
       include: {
@@ -267,6 +283,118 @@ export class AuditPlansService {
         },
       },
     });
+
+    const notifications: any[] = [];
+    const planName = plan.name;
+
+    for (const auditorId of addedAuditorIds) {
+      if (auditorId === newLeadAuditorId && leadAuditorChanged) {
+        notifications.push({
+          recipientId: auditorId,
+          type: 'audit_change',
+          title: '审计计划变更通知',
+          content: `您被任命为审计计划「${planName}」的主审计师，请及时处理。`,
+          priority: 'medium',
+          relatedType: 'audit_plan',
+          relatedId: id,
+          isRead: false,
+        });
+      } else {
+        notifications.push({
+          recipientId: auditorId,
+          type: 'audit_change',
+          title: '审计计划变更通知',
+          content: `您被分配到审计计划「${planName}」，请及时处理。`,
+          priority: 'medium',
+          relatedType: 'audit_plan',
+          relatedId: id,
+          isRead: false,
+        });
+      }
+    }
+
+    for (const auditorId of removedAuditorIds) {
+      if (auditorId === originalLeadAuditorId) {
+        notifications.push({
+          recipientId: auditorId,
+          type: 'audit_change',
+          title: '审计计划变更通知',
+          content: `您已不再担任审计计划「${planName}」的主审计师。`,
+          priority: 'medium',
+          relatedType: 'audit_plan',
+          relatedId: id,
+          isRead: false,
+        });
+      } else {
+        notifications.push({
+          recipientId: auditorId,
+          type: 'audit_change',
+          title: '审计计划变更通知',
+          content: `您已从审计计划「${planName}」中移除。`,
+          priority: 'medium',
+          relatedType: 'audit_plan',
+          relatedId: id,
+          isRead: false,
+        });
+      }
+    }
+
+    if (leadAuditorChanged && newLeadAuditorId && !addedAuditorIds.includes(newLeadAuditorId)) {
+      notifications.push({
+        recipientId: newLeadAuditorId,
+        type: 'audit_change',
+        title: '审计计划变更通知',
+        content: `您被任命为审计计划「${planName}」的主审计师，请及时处理。`,
+        priority: 'medium',
+        relatedType: 'audit_plan',
+        relatedId: id,
+        isRead: false,
+      });
+    }
+
+    if (plan.auditObject?.contactPerson) {
+      const contactUser = await this.prisma.user.findFirst({
+        where: {
+          OR: [
+            { name: plan.auditObject.contactPerson },
+            { email: plan.auditObject.contactPerson },
+          ],
+        },
+        select: { id: true },
+      });
+      if (contactUser) {
+        notifications.push({
+          recipientId: contactUser.id,
+          type: 'audit_change',
+          title: '审计计划变更通知',
+          content: `与您相关的审计计划「${planName}」人员已调整，请注意配合。`,
+          priority: 'medium',
+          relatedType: 'audit_plan',
+          relatedId: id,
+          isRead: false,
+        });
+      }
+    }
+
+    const originalLeadAuditor = existingAuditors.find((pa) => pa.role === 'lead');
+
+    if (notifications.length > 0) {
+      await this.prisma.notification.createMany({
+        data: notifications,
+      });
+    }
+
+    return {
+      plan: {
+        ...result,
+        auditorNames: result.planAuditors.map((pa) => pa.auditor.name),
+      },
+      originalLeadAuditor,
+      addedAuditorIds,
+      removedAuditorIds,
+      leadAuditorChanged,
+      notificationsCreated: notifications.length,
+    };
   }
 
   async remove(id: string) {
