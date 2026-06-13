@@ -1,0 +1,294 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String         @id @default(uuid())
+  username      String         @unique
+  passwordHash  String
+  name          String
+  email         String?        @unique
+  phone         String?
+  role          String         @default("auditor")
+  department    String?
+  isActive      Boolean        @default(true)
+  lastLoginAt   DateTime?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  auditPlans        AuditPlan[]        @relation("LeadAuditor")
+  findings          Finding[]          @relation("DiscoveredBy")
+  confirmedFindings Finding[]          @relation("ConfirmedBy")
+  evidences         Evidence[]
+  rectifications    Rectification[]
+  notifications     Notification[]
+  systemLogs        SystemLog[]
+  planAuditors      PlanAuditor[]
+  riskAssessments   RiskAssessment[]
+  rectificationUpdates RectificationUpdate[]
+  reports           Report[]
+}
+
+model AuditObject {
+  id               String           @id @default(uuid())
+  name             String
+  code             String           @unique
+  type             String
+  industry         String?
+  description      String?
+  riskScore        Float            @default(0)
+  riskLevel        String           @default("low")
+  lastAssessmentAt DateTime?
+  contactPerson    String?
+  contactPhone     String?
+  status           String           @default("active")
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+
+  riskAssessments RiskAssessment[]
+  auditPlans      AuditPlan[]
+  findings        Finding[]
+  evidences       Evidence[]
+  rectifications  Rectification[]
+  collectedData   CollectedData[]
+}
+
+model RiskAssessment {
+  id              String       @id @default(uuid())
+  auditObjectId   String
+  previousScore   Float?
+  currentScore    Float
+  previousLevel   String?
+  currentLevel    String
+  dimensionScores String
+  assessedBy      String?
+  isManual        Boolean      @default(false)
+  assessedAt      DateTime     @default(now())
+  createdAt       DateTime     @default(now())
+
+  auditObject  AuditObject   @relation(fields: [auditObjectId], references: [id])
+  assessedByUser User?        @relation(fields: [assessedBy], references: [id])
+  riskFactors  RiskFactor[]
+}
+
+model RiskFactor {
+  id               String   @id @default(uuid())
+  riskAssessmentId String
+  factorCode       String
+  factorName       String
+  weight           Float
+  score            Float
+  description      String?
+  dataSource       String
+
+  riskAssessment RiskAssessment @relation(fields: [riskAssessmentId], references: [id])
+}
+
+model AuditPlan {
+  id             String        @id @default(uuid())
+  year           Int
+  name           String
+  description    String?
+  status         String        @default("draft")
+  startDate      DateTime
+  endDate        DateTime
+  auditObjectId  String?
+  leadAuditorId  String?
+  progress       Int           @default(0)
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  auditObject   AuditObject?   @relation(fields: [auditObjectId], references: [id])
+  leadAuditor   User?          @relation("LeadAuditor", fields: [leadAuditorId], references: [id])
+  findings      Finding[]
+  evidences     Evidence[]
+  planAuditors  PlanAuditor[]
+}
+
+model PlanAuditor {
+  id           String   @id @default(uuid())
+  auditPlanId  String
+  auditorId    String
+  role         String   @default("auditor")
+  assignedAt   DateTime @default(now())
+
+  auditPlan AuditPlan @relation(fields: [auditPlanId], references: [id])
+  auditor   User      @relation(fields: [auditorId], references: [id])
+
+  @@unique([auditPlanId, auditorId])
+}
+
+model Evidence {
+  id            String   @id @default(uuid())
+  fileName      String
+  originalName  String
+  fileSize      Int
+  fileType      String
+  filePath      String
+  fileUrl       String
+  auditObjectId String?
+  auditPlanId   String?
+  description   String?
+  tags          String?
+  uploadedBy    String?
+  validationStatus String  @default("pending")
+  validationMessage String?
+  uploadedAt    DateTime @default(now())
+
+  auditObject  AuditObject? @relation(fields: [auditObjectId], references: [id])
+  auditPlan    AuditPlan?   @relation(fields: [auditPlanId], references: [id])
+  uploadedByUser User?      @relation(fields: [uploadedBy], references: [id])
+  findingEvidences FindingEvidence[]
+}
+
+model Finding {
+  id                    String   @id @default(uuid())
+  title                 String
+  description           String
+  auditPlanId           String?
+  auditObjectId         String?
+  riskLevel             String
+  riskScore             Float?
+  category              String?
+  status                String   @default("pending_confirmation")
+  discoveredBy          String?
+  discoveredAt          DateTime @default(now())
+  confirmedBy           String?
+  confirmedAt           DateTime?
+  confirmComment        String?
+  rectificationDeadline DateTime?
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  auditPlan    AuditPlan?  @relation(fields: [auditPlanId], references: [id])
+  auditObject  AuditObject? @relation(fields: [auditObjectId], references: [id])
+  discoveredByUser User? @relation("DiscoveredBy", fields: [discoveredBy], references: [id])
+  confirmedByUser User?  @relation("ConfirmedBy", fields: [confirmedBy], references: [id])
+  rectification  Rectification?
+  findingEvidences FindingEvidence[]
+}
+
+model FindingEvidence {
+  id         String   @id @default(uuid())
+  findingId  String
+  evidenceId String
+  createdAt  DateTime @default(now())
+
+  finding  Finding  @relation(fields: [findingId], references: [id])
+  evidence Evidence @relation(fields: [evidenceId], references: [id])
+
+  @@unique([findingId, evidenceId])
+}
+
+model Rectification {
+  id                     String                 @id @default(uuid())
+  findingId              String                 @unique
+  auditObjectId          String?
+  plan                   String
+  measures               String
+  responsiblePersonId    String?
+  expectedCompletionDate DateTime
+  actualCompletionDate   DateTime?
+  expectedEffect         String?
+  status                 String                 @default("draft")
+  progress               Int                    @default(0)
+  isOverdue              Boolean                @default(false)
+  escalationLevel        Int                    @default(0)
+  createdAt              DateTime               @default(now())
+  updatedAt              DateTime               @updatedAt
+
+  finding             Finding                @relation(fields: [findingId], references: [id])
+  auditObject         AuditObject?           @relation(fields: [auditObjectId], references: [id])
+  responsiblePerson   User?                  @relation(fields: [responsiblePersonId], references: [id])
+  rectificationUpdates RectificationUpdate[]
+}
+
+model RectificationUpdate {
+  id                String   @id @default(uuid())
+  rectificationId   String
+  progress          Int
+  description       String
+  updatedBy         String?
+  attachments       String?
+  updatedAt         DateTime @default(now())
+
+  rectification Rectification @relation(fields: [rectificationId], references: [id])
+  updatedByUser User?         @relation(fields: [updatedBy], references: [id])
+}
+
+model Report {
+  id          String   @id @default(uuid())
+  name        String
+  type        String
+  startDate   DateTime
+  endDate     DateTime
+  statistics  String
+  charts      String
+  pdfUrl      String?
+  excelUrl    String?
+  generatedBy String?
+  generatedAt DateTime @default(now())
+
+  generatedByUser User? @relation(fields: [generatedBy], references: [id])
+}
+
+model Notification {
+  id          String   @id @default(uuid())
+  type        String
+  title       String
+  content     String
+  relatedType String?
+  relatedId   String?
+  recipientId String
+  isRead      Boolean  @default(false)
+  readAt      DateTime?
+  priority    String   @default("medium")
+  createdAt   DateTime @default(now())
+
+  recipient User @relation(fields: [recipientId], references: [id])
+}
+
+model SystemLog {
+  id            String   @id @default(uuid())
+  userId        String?
+  username      String?
+  operation     String
+  module        String
+  ipAddress     String?
+  userAgent     String?
+  requestData   String?
+  responseData  String?
+  responseCode  Int?
+  durationMs    Int?
+  createdAt     DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id])
+}
+
+model RiskModel {
+  id             String   @id @default(uuid())
+  dimensionCode  String   @unique
+  dimensionName  String
+  weight         Float
+  factors        String
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+
+model CollectedData {
+  id              String   @id @default(uuid())
+  sourceSystem    String
+  dataType        String
+  rawData         String
+  auditObjectId   String?
+  collectionBatch String
+  collectedAt     DateTime @default(now())
+
+  auditObject AuditObject? @relation(fields: [auditObjectId], references: [id])
+}
