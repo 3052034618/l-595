@@ -208,7 +208,7 @@ export class RectificationsService {
 
     let status = rectification.status;
     if (addUpdateDto.progress >= 100) {
-      status = 'completed';
+      status = 'submitted';
     } else if (addUpdateDto.progress > 0) {
       status = 'in_progress';
     }

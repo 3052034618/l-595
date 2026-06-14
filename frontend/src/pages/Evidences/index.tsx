@@ -32,9 +32,9 @@ interface EvidenceItem {
 }
 
 const getEvidenceType = (mimeType: string): string => {
-  if (mimeType.includes('pdf') || mimeType.includes('word') || mimeType.includes('document')) return 'document'
+  if (mimeType.includes('pdf') || mimeType.includes('word') || mimeType.includes('document') || mimeType.includes('doc')) return 'document'
   if (mimeType.includes('image')) return 'screenshot'
-  if (mimeType.includes('excel') || mimeType.includes('spreadsheet') || mimeType.includes('sheet')) return 'spreadsheet'
+  if (mimeType.includes('excel') || mimeType.includes('spreadsheet') || mimeType.includes('sheet') || mimeType.includes('xlsx') || mimeType.includes('xls') || mimeType.includes('csv')) return 'spreadsheet'
   if (mimeType.includes('email')) return 'email'
   if (mimeType.includes('audio') || mimeType.includes('video')) return 'interview'
   return 'other'
@@ -224,15 +224,12 @@ const Evidences: React.FC = () => {
     {
       title: '类型',
       key: 'type',
-      width: 100,
-      render: (_: unknown, record: EvidenceItem) => getEvidenceTypeName(getEvidenceType(record.fileType)),
-    },
-    {
-      title: '文件类型',
-      dataIndex: 'fileType',
-      key: 'fileType',
       width: 140,
-      ellipsis: true,
+      render: (_: unknown, record: EvidenceItem) => {
+        const category = getEvidenceType(record.fileType)
+        const categoryName = getEvidenceTypeName(category)
+        return <span>{categoryName} <span className="text-gray-400 text-xs">({record.fileType})</span></span>
+      },
     },
     {
       title: '文件大小',

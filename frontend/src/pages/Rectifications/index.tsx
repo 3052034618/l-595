@@ -16,6 +16,7 @@ import {
   Form,
   Slider,
   Input as AntInput,
+  Steps,
 } from 'antd'
 import {
   PlusOutlined,
@@ -25,9 +26,10 @@ import {
   SearchOutlined,
   ReloadOutlined,
   EditOutlined,
+  SendOutlined,
 } from '@ant-design/icons'
 import { useAppStore } from '@/store/appStore'
-import { getStatusColor, getStatusText, formatDate } from '@/utils'
+import { formatDate } from '@/utils'
 import {
   getRectifications,
   createRectification,
@@ -63,6 +65,14 @@ interface RectificationItem {
   rectificationUpdates?: Array<{ id: string; progress: number; description: string; createdAt: string }>
 }
 
+const STATUS_STEP_MAP: Record<string, number> = {
+  draft: 0,
+  in_progress: 0,
+  submitted: 1,
+  completed: 2,
+  rejected: 0,
+}
+
 const Rectifications: React.FC = () => {
   const { setCurrentPage } = useAppStore()
 
@@ -88,9 +98,12 @@ const Rectifications: React.FC = () => {
   const [verifyModalOpen, setVerifyModalOpen] = useState(false)
   const [verifyRecord, setVerifyRecord] = useState<RectificationItem | null>(null)
   const [verifyType, setVerifyType] = useState<'pass' | 'reject'>('pass')
+  const [submitModalOpen, setSubmitModalOpen] = useState(false)
+  const [submitRecord, setSubmitRecord] = useState<RectificationItem | null>(null)
   const [form] = Form.useForm()
   const [updateForm] = Form.useForm()
   const [verifyForm] = Form.useForm()
+  const [submitForm] = Form.useForm()
 
   const fetchData = async () => {
     setLoading(true)
@@ -221,6 +234,32 @@ const Rectifications: React.FC = () => {
     }
   }
 
+  const handleOpenSubmit = (record: RectificationItem) => {
+    setSubmitRecord(record)
+    submitForm.resetFields()
+    setSubmitModalOpen(true)
+  }
+
+  const handleSubmitVerify = async () => {
+    if (!submitRecord) return
+    try {
+      const values = await submitForm.validateFields()
+      const res = await addRectificationUpdate(submitRecord.id, {
+        progress: 100,
+        description: values.comment || '提交验证',
+      })
+      if (res.code === 0) {
+        message.success('已提交验证，等待审核')
+        setSubmitModalOpen(false)
+        setSubmitRecord(null)
+        submitForm.resetFields()
+        fetchData()
+      }
+    } catch (error) {
+      console.error('提交验证失败:', error)
+    }
+  }
+
   const handleTableChange = (pagination: TablePaginationConfig) => {
     if (pagination.current) setPage(pagination.current)
     if (pagination.pageSize) {
@@ -229,11 +268,42 @@ const Rectifications: React.FC = () => {
     }
   }
 
-  const renderStatusTag = (record: RectificationItem) => {
+  const renderStatusSteps = (record: RectificationItem) => {
     if (record.isOverdue) {
       return <Tag color="red">已超期</Tag>
     }
-    return <Tag color={getStatusColor(record.status)}>{getStatusText(record.status)}</Tag>
+
+    if (record.status === 'rejected') {
+      return (
+        <Space size={2}>
+          <Tag color="red">已驳回</Tag>
+          <Tag color="blue">继续整改中</Tag>
+        </Space>
+      )
+    }
+
+    const currentStep = STATUS_STEP_MAP[record.status] ?? 0
+
+    const stepConfig = [
+      { title: '整改中', color: currentStep === 0 ? 'blue' : undefined },
+      { title: '待验证', color: currentStep === 1 ? 'orange' : undefined },
+      { title: '已完成', color: currentStep === 2 ? 'green' : undefined },
+    ]
+
+    return (
+      <Steps
+        size="small"
+        current={currentStep}
+        items={stepConfig.map((s, idx) => ({
+          title: (
+            <span style={{ color: idx === currentStep ? undefined : '#8c8c8c', fontSize: 12 }}>
+              {s.title}
+            </span>
+          ),
+        }))}
+        style={{ minWidth: 180 }}
+      />
+    )
   }
 
   const columns = [
@@ -317,13 +387,13 @@ const Rectifications: React.FC = () => {
     {
       title: '状态',
       key: 'status',
-      width: 100,
-      render: (_: unknown, record: RectificationItem) => renderStatusTag(record),
+      width: 200,
+      render: (_: unknown, record: RectificationItem) => renderStatusSteps(record),
     },
     {
       title: '操作',
       key: 'action',
-      width: 280,
+      width: 320,
       fixed: 'right' as const,
       render: (_: unknown, record: RectificationItem) => (
         <Space>
@@ -333,7 +403,7 @@ const Rectifications: React.FC = () => {
           <Button type="link" size="small" icon={<MessageOutlined />}>
             评论
           </Button>
-          {(record.status === 'in_progress' || record.status === 'draft') && (
+          {(record.status === 'in_progress' || record.status === 'draft' || record.status === 'rejected') && (
             <Button
               type="link"
               size="small"
@@ -341,6 +411,16 @@ const Rectifications: React.FC = () => {
               onClick={() => handleOpenUpdate(record)}
             >
               更新进度
+            </Button>
+          )}
+          {record.status === 'in_progress' && (
+            <Button
+              type="link"
+              size="small"
+              icon={<SendOutlined />}
+              onClick={() => handleOpenSubmit(record)}
+            >
+              提交验证
             </Button>
           )}
           {record.status === 'submitted' && (
@@ -412,8 +492,8 @@ const Rectifications: React.FC = () => {
               onChange={(val) => setStatus(val)}
             >
               <Option value="draft">草稿</Option>
-              <Option value="in_progress">进行中</Option>
-              <Option value="submitted">已提交</Option>
+              <Option value="in_progress">整改中</Option>
+              <Option value="submitted">待验证</Option>
               <Option value="completed">已完成</Option>
               <Option value="overdue">已超期</Option>
               <Option value="rejected">已驳回</Option>
@@ -475,7 +555,7 @@ const Rectifications: React.FC = () => {
             showTotal: (t) => `共 ${t} 条`,
           }}
           onChange={handleTableChange}
-          scroll={{ x: 1700 }}
+          scroll={{ x: 1900 }}
         />
       </Card>
 
@@ -537,6 +617,28 @@ const Rectifications: React.FC = () => {
           </Form.Item>
           <Form.Item name="description" label="进度说明" rules={[{ required: true, message: '请输入进度说明' }]}>
             <TextArea rows={3} placeholder="请详细描述当前进度情况" />
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      <Modal
+        title="提交验证"
+        open={submitModalOpen}
+        onOk={handleSubmitVerify}
+        onCancel={() => {
+          setSubmitModalOpen(false)
+          setSubmitRecord(null)
+          submitForm.resetFields()
+        }}
+        okText="确认提交"
+        cancelText="取消"
+      >
+        <div style={{ marginBottom: 16, color: '#595959' }}>
+          确认将整改项提交验证？提交后进度将更新为 100%，状态变为"待验证"。
+        </div>
+        <Form form={submitForm} layout="vertical">
+          <Form.Item name="comment" label="备注说明（可选）">
+            <TextArea rows={3} placeholder="请输入提交验证的备注说明" />
           </Form.Item>
         </Form>
       </Modal>

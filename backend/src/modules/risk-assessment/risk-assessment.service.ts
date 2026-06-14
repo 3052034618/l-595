@@ -257,16 +257,35 @@ export class RiskAssessmentService {
         where,
         skip,
         take: pageSize,
-        include: { riskFactors: true },
+        include: {
+          auditObject: { select: { id: true, name: true, code: true, contactPerson: true } },
+          assessedByUser: { select: { id: true, name: true } },
+          riskFactors: true,
+        },
         orderBy: { assessedAt: 'desc' },
       }),
       this.prisma.riskAssessment.count({ where }),
     ]);
 
-    const parsedItems = items.map((item) => ({
-      ...item,
-      dimensionScores: JSON.parse(item.dimensionScores as string) || {},
-    }));
+    const parsedItems = items.map((item) => {
+      const scores = JSON.parse(item.dimensionScores as string) || {
+        financialRisk: 0,
+        operationalRisk: 0,
+        complianceRisk: 0,
+        strategicRisk: 0,
+        reputationalRisk: 0,
+      };
+      const avgControl = 100 - Math.round(
+        ((scores.financialRisk || 0) + (scores.operationalRisk || 0) + (scores.complianceRisk || 0) + (scores.strategicRisk || 0) + (scores.reputationalRisk || 0)) / 5
+      );
+      return {
+        ...item,
+        dimensionScores: scores,
+        inherentRisk: item.currentScore,
+        controlEffectiveness: Math.max(0, Math.min(100, avgControl)),
+        residualRisk: Math.round(item.currentScore * (1 - avgControl / 100)),
+      };
+    });
 
     return {
       items: parsedItems,

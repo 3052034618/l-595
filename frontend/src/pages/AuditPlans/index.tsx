@@ -4,6 +4,7 @@ import { PlusOutlined, PlayCircleOutlined, CheckCircleOutlined, DeleteOutlined, 
 import { useAppStore } from '@/store/appStore'
 import { getStatusColor, getStatusText, formatDate } from '@/utils'
 import { getAuditPlans, generatePlan, reassignAuditor, deleteAuditPlan, startAudit, completeAudit } from '@/services/auditPlans'
+import { get } from '@/services/api'
 import type { TablePaginationConfig } from 'antd/es/table'
 
 const { Option } = Select
@@ -48,6 +49,19 @@ const AuditPlans: React.FC = () => {
   const [reassignRecord, setReassignRecord] = useState<AuditPlanItem | null>(null)
   const [form] = Form.useForm()
   const [reassignForm] = Form.useForm()
+  const [auditorOptions, setAuditorOptions] = useState<Array<{ id: string; name: string; role: string }>>([])
+
+  useEffect(() => {
+    get('/users', { page: 1, pageSize: 100 }).then((res) => {
+      if (res.code === 0 && res.data) {
+        const items = res.data.items || res.data || []
+        const filtered = items.filter(
+          (u: { role: string }) => u.role === 'auditor' || u.role === 'admin' || u.role === 'audit_manager'
+        )
+        setAuditorOptions(filtered)
+      }
+    }).catch(() => {})
+  }, [])
 
   const fetchData = async () => {
     setLoading(true)
@@ -145,6 +159,10 @@ const AuditPlans: React.FC = () => {
   const handleReassign = (record: AuditPlanItem) => {
     setReassignRecord(record)
     setReassignModalOpen(true)
+    reassignForm.setFieldsValue({
+      leadAuditorId: record.leadAuditorId,
+      teamMembers: record.planAuditors?.map(pa => pa.auditor.id) || [],
+    })
   }
 
   const handleReassignSubmit = async () => {
@@ -152,11 +170,7 @@ const AuditPlans: React.FC = () => {
     try {
       const values = await reassignForm.validateFields()
       const leadAuditorId = values.leadAuditorId
-      const teamStr = values.teamMembers || ''
-      const teamArray = teamStr
-        .split(/[,，\s]+/)
-        .map((s: string) => s.trim())
-        .filter(Boolean)
+      const teamArray = values.teamMembers || []
       const auditorIds = Array.from(new Set([leadAuditorId, ...teamArray]))
       const res = await reassignAuditor(reassignRecord.id, {
         leadAuditorId,
@@ -442,13 +456,17 @@ const AuditPlans: React.FC = () => {
         <Form form={reassignForm} layout="vertical">
           <Form.Item
             name="leadAuditorId"
-            label="主审计师ID"
-            rules={[{ required: true, message: '请输入主审计师ID' }]}
+            label="主审计师"
+            rules={[{ required: true, message: '请选择主审计师' }]}
           >
-            <Input placeholder="请输入主审计师ID" />
+            <Select placeholder="请选择主审计师" showSearch optionFilterProp="children">
+              {auditorOptions.map(u => <Option key={u.id} value={u.id}>{u.name} ({u.role})</Option>)}
+            </Select>
           </Form.Item>
-          <Form.Item name="teamMembers" label="团队成员ID（逗号分隔）">
-            <Input placeholder="请输入团队成员ID，多个用逗号分隔，已包含主审计师" />
+          <Form.Item name="teamMembers" label="团队成员">
+            <Select mode="multiple" placeholder="请选择团队成员" showSearch optionFilterProp="children">
+              {auditorOptions.map(u => <Option key={u.id} value={u.id}>{u.name} ({u.role})</Option>)}
+            </Select>
           </Form.Item>
           <Form.Item name="reason" label="调整原因">
             <Input.TextArea rows={2} placeholder="请输入调整原因（可选）" />
