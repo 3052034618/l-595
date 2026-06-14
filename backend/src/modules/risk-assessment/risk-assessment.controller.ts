@@ -54,7 +54,7 @@ export class RiskAssessmentController {
 
   @Get('history')
   async getAllHistory(
-    @Query() query: { page?: number; pageSize?: number; startDate?: string; endDate?: string; auditObjectId?: string },
+    @Query() query: { page?: number; pageSize?: number; startDate?: string; endDate?: string; auditObjectId?: string; keyword?: string; riskLevel?: string },
   ): Promise<ApiResponse> {
     const data = await this.riskAssessmentService.getAllHistory(query);
     return {

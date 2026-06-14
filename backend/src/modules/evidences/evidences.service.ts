@@ -117,7 +117,25 @@ export class EvidencesService {
     if (query.findingId) {
       where.findingEvidences = { some: { findingId: query.findingId } };
     }
-    if (query.fileType) where.fileType = query.fileType;
+    if (query.fileType) {
+      const categoryMap: Record<string, string[]> = {
+        document: ['pdf', 'word', 'document', 'doc'],
+        spreadsheet: ['excel', 'spreadsheet', 'sheet', 'xlsx', 'xls', 'csv'],
+        screenshot: ['image', 'png', 'jpg', 'jpeg', 'gif', 'bmp'],
+        email: ['email', 'eml', 'msg'],
+        interview: ['audio', 'video', 'mp3', 'mp4', 'wav'],
+        other: ['other'],
+      };
+      const keywords = categoryMap[query.fileType];
+      if (keywords && keywords.length > 0 && query.fileType !== 'other') {
+        where.OR = keywords.map((k) => ({ fileType: { contains: k } }));
+      } else if (query.fileType === 'other') {
+        const core = ['pdf', 'word', 'document', 'doc', 'excel', 'spreadsheet', 'sheet', 'xlsx', 'xls', 'csv', 'image', 'png', 'jpg', 'jpeg', 'gif', 'bmp', 'email', 'eml', 'msg', 'audio', 'video', 'mp3', 'mp4', 'wav'];
+        where.NOT = { OR: core.map((k) => ({ fileType: { contains: k } })) };
+      } else {
+        where.fileType = query.fileType;
+      }
+    }
     if (query.uploadedBy) where.uploadedBy = query.uploadedBy;
     if (query.startDate) where.uploadedAt = { gte: dayjs(query.startDate).toDate() };
     if (query.endDate) where.uploadedAt = { ...where.uploadedAt, lte: dayjs(query.endDate).toDate() };

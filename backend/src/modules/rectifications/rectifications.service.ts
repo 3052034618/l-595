@@ -234,8 +234,8 @@ export class RectificationsService {
       throw new NotFoundException('整改计划不存在');
     }
 
-    if (rectification.status !== 'completed') {
-      throw new BadRequestException('整改未完成，无法验证');
+    if (rectification.status !== 'submitted') {
+      throw new BadRequestException('只有已提交状态的整改才能进行验证');
     }
 
     const newStatus = verifyCompletionDto.passed ? 'completed' : 'in_progress';

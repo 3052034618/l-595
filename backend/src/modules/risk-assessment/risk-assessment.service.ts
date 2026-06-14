@@ -180,7 +180,7 @@ export class RiskAssessmentService {
     return 'low';
   }
 
-  async getAllHistory(query: { page?: number; pageSize?: number; startDate?: string; endDate?: string; auditObjectId?: string }) {
+  async getAllHistory(query: { page?: number; pageSize?: number; startDate?: string; endDate?: string; auditObjectId?: string; keyword?: string; riskLevel?: string }) {
     const page = Number(query.page) || 1;
     const pageSize = Number(query.pageSize) || 10;
     const skip = (page - 1) * pageSize;
@@ -189,6 +189,15 @@ export class RiskAssessmentService {
     if (query.auditObjectId) where.auditObjectId = query.auditObjectId;
     if (query.startDate) where.assessedAt = { gte: dayjs(query.startDate).toDate() };
     if (query.endDate) where.assessedAt = { ...where.assessedAt, lte: dayjs(query.endDate).toDate() };
+    if (query.riskLevel) where.currentLevel = query.riskLevel;
+    if (query.keyword) {
+      where.auditObject = {
+        OR: [
+          { name: { contains: query.keyword } },
+          { code: { contains: query.keyword } },
+        ],
+      };
+    }
 
     const [items, total] = await Promise.all([
       this.prisma.riskAssessment.findMany({

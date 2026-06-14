@@ -55,23 +55,14 @@ const RiskAssessment: React.FC = () => {
         page,
         pageSize,
       }
+      if (keyword) (params as any).keyword = keyword
+      if (riskLevel) (params as any).riskLevel = riskLevel
       if (dateRange && dateRange[0]) (params as any).startDate = dateRange[0]
       if (dateRange && dateRange[1]) (params as any).endDate = dateRange[1]
 
       const res = await getRiskAssessments(undefined, params as any)
       if (res.code === 0 && res.data) {
-        let items = res.data.items as AssessmentItem[]
-        if (keyword) {
-          const kw = keyword.toLowerCase()
-          items = items.filter((i) =>
-            i.auditObject?.name?.toLowerCase().includes(kw) ||
-            i.auditObject?.code?.toLowerCase().includes(kw)
-          )
-        }
-        if (riskLevel) {
-          items = items.filter((i) => i.currentLevel === riskLevel)
-        }
-        items = items.map((i) => ({
+        const items = (res.data.items as AssessmentItem[]).map((i) => ({
           ...i,
           currentLevelDisplay: i.currentLevel,
           _status: i.isManual ? 'approved' : 'submitted',

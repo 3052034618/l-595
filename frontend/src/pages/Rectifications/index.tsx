@@ -343,7 +343,7 @@ const Rectifications: React.FC = () => {
               更新进度
             </Button>
           )}
-          {(record.status === 'completed' || record.status === 'submitted') && (
+          {record.status === 'submitted' && (
             <Button
               type="link"
               size="small"
@@ -353,7 +353,7 @@ const Rectifications: React.FC = () => {
               验证通过
             </Button>
           )}
-          {(record.status === 'completed' || record.status === 'submitted') && (
+          {record.status === 'submitted' && (
             <Button
               type="link"
               size="small"

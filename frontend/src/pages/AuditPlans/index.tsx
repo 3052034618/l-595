@@ -217,6 +217,22 @@ const AuditPlans: React.FC = () => {
       render: (_: unknown, record: AuditPlanItem) => record.leadAuditor?.name || '-',
     },
     {
+      title: '团队成员',
+      key: 'auditorNames',
+      width: 200,
+      render: (_: unknown, record: AuditPlanItem) => {
+        const names = record.auditorNames || []
+        if (names.length === 0) return '-'
+        return (
+          <Space size={4} wrap>
+            {names.map((n) => (
+              <Tag key={n} color="blue">{n}</Tag>
+            ))}
+          </Space>
+        )
+      },
+    },
+    {
       title: '计划期间',
       key: 'period',
       width: 220,
